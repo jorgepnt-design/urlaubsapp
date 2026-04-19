@@ -581,7 +581,7 @@ toast.success{background:var(--green);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ── Login Screen ── */
-#login-screen,#trip-setup-screen{
+#login-screen,#trip-setup-screen,#reset-screen{
   position:fixed;inset:0;
   background:linear-gradient(160deg,var(--green-dark),var(--green),#34D399);
   display:flex;align-items:center;justify-content:center;
@@ -654,7 +654,26 @@ toast.success{background:var(--green);}
     <div style="display:flex;gap:10px;flex-direction:column;">
       <button class="btn btn-primary btn-full" onclick="loginWithPassword()">Einloggen</button>
       <button class="btn btn-secondary btn-full" onclick="registerWithPassword()">Registrieren</button>
+      <button class="btn btn-secondary btn-full" onclick="forgotPassword()">Passwort vergessen?</button>
     </div>
+  </div>
+</div>
+
+<!-- Password Reset Screen -->
+<div id="reset-screen" class="hidden">
+  <div class="login-card">
+    <div class="login-logo">🔐</div>
+    <h1 class="login-title">Neues Passwort</h1>
+    <p class="login-sub">Bitte setze jetzt dein neues Passwort.</p>
+    <div class="form-group">
+      <label class="form-label">Neues Passwort</label>
+      <input id="reset-password" class="form-input" type="password" placeholder="Neues Passwort" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Passwort wiederholen</label>
+      <input id="reset-password-2" class="form-input" type="password" placeholder="Passwort wiederholen" autocomplete="new-password">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveNewPassword()">Passwort speichern</button>
   </div>
 </div>
 
