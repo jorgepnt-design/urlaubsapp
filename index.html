@@ -2093,11 +2093,12 @@ function uploadWithTimeout(path, file, options, timeoutMs = 120000) {
   ]);
 }
 
-function runWithTimeout(promise, timeoutMs = 20000, label = 'Vorgang') {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label}-Timeout (${Math.round(timeoutMs/1000)}s)`)), timeoutMs)),
-  ]);
+function setAttachmentRenameLoading(id, isLoading, label = 'Umbenennen...') {
+  const btn = document.getElementById(`rename-attachment-${id}`);
+  if (!btn) return;
+  if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || 'Umbenennen';
+  btn.disabled = !!isLoading;
+  btn.textContent = isLoading ? label : btn.dataset.defaultLabel;
 }
 
 async function addAttachments() {
@@ -2197,28 +2198,50 @@ async function renameAttachment(id) {
   if (!trimmed) { toast('Name darf nicht leer sein', 'error'); return; }
   if (trimmed === currentName) return;
 
+  const oldPath = row.file_path;
+  const extensionFromCurrent = (currentName.includes('.') ? currentName.split('.').pop() : '').toLowerCase();
+  const hasExtension = /\.[a-zA-Z0-9]{1,8}$/.test(trimmed);
+  const desiredName = hasExtension || !extensionFromCurrent ? trimmed : `${trimmed}.${extensionFromCurrent}`;
+  const safeName = sanitizeFileName(desiredName);
+  const newPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
+
   showSpinner();
+  setAttachmentRenameLoading(id, true);
   try {
-    const { data, error } = await runWithTimeout(
-      sb.from('attachments').update({ file_name: trimmed }).eq('id', id).select('id,file_name').single(),
-      20000,
-      'Umbenennen'
-    );
-    if (error) {
+    const cp = await sb.storage.from(ATTACHMENTS_BUCKET).copy(oldPath, newPath);
+    if (cp.error) {
+      toast('Umbenennen fehlgeschlagen: ' + formatSupabaseError(cp.error), 'error');
+      return;
+    }
+
+    const { data, error } = await sb
+      .from('attachments')
+      .update({ file_name: desiredName, file_path: newPath })
+      .eq('id', id)
+      .select('id,file_name,file_path')
+      .single();
+    if (error || !data) {
+      await sb.storage.from(ATTACHMENTS_BUCKET).remove([newPath]);
       toast('Umbenennen fehlgeschlagen: ' + formatSupabaseError(error), 'error');
       return;
     }
-    if (!data) {
-      toast('Umbenennen fehlgeschlagen: Keine Rückmeldung vom Server', 'error');
-      return;
+
+    const rm = await sb.storage.from(ATTACHMENTS_BUCKET).remove([oldPath]);
+    if (rm.error) {
+      toast('Hinweis: Neuer Name gespeichert, alte Datei konnte nicht gelöscht werden - ' + formatSupabaseError(rm.error), 'error');
     }
+
     const idx = S.attachments.findIndex(a => a.id === id);
-    if (idx >= 0) S.attachments[idx].file_name = data.file_name;
+    if (idx >= 0) {
+      S.attachments[idx].file_name = data.file_name;
+      S.attachments[idx].file_path = data.file_path;
+    }
     await renderAttachments();
     toast('Anlage umbenannt', 'success');
   } catch (err) {
     toast('Umbenennen fehlgeschlagen: ' + (err?.message || 'Unbekannter Fehler'), 'error');
   } finally {
+    setAttachmentRenameLoading(id, false);
     hideSpinner();
   }
 }
@@ -2245,7 +2268,7 @@ async function renderAttachments() {
       </div>
       <div class="attachment-actions">
         ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${a.signed_url}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
-        <button class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
+        <button id="rename-attachment-${a.id}" class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
         <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
       </div>
     </div>`;
