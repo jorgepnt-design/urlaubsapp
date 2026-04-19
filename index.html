@@ -130,6 +130,17 @@ CREATE TABLE weather_city (
   city_name TEXT DEFAULT ''
 );
 
+CREATE TABLE attachments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL,
+  uploaded_by UUID REFERENCES auth.users(id),
+  file_name TEXT NOT NULL,
+  file_path TEXT NOT NULL UNIQUE,
+  file_size BIGINT DEFAULT 0,
+  mime_type TEXT DEFAULT 'application/octet-stream',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Helper function for RLS
 CREATE OR REPLACE FUNCTION is_trip_member(p_trip_id UUID)
 RETURNS BOOLEAN AS $$
@@ -166,6 +177,7 @@ ALTER TABLE budget_limit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE emergency_info ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weather_city ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attachments ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 CREATE POLICY "trips_select" ON trips FOR SELECT USING (is_trip_member(id) OR user_id = auth.uid());
@@ -193,6 +205,7 @@ CREATE POLICY "budget_limit_all" ON budget_limit FOR ALL USING (is_trip_member(t
 CREATE POLICY "notes_all" ON notes FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "emergency_all" ON emergency_info FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "weather_all" ON weather_city FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
+CREATE POLICY "attachments_all" ON attachments FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 
 -- Enable Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE pack_items;
@@ -204,6 +217,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE flights;
 ALTER PUBLICATION supabase_realtime ADD TABLE trips;
 ALTER PUBLICATION supabase_realtime ADD TABLE notes;
 ALTER PUBLICATION supabase_realtime ADD TABLE trip_members;
+ALTER PUBLICATION supabase_realtime ADD TABLE attachments;
 
 ================================================================
 -->
@@ -557,6 +571,19 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   font-size:16px;line-height:1;
   display:flex;align-items:center;justify-content:center;
 }
+
+/* ── Attachments ── */
+.attachments-list{display:flex;flex-direction:column;gap:8px;}
+.attachment-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-md);padding:10px 12px;
+}
+.attachment-icon{font-size:20px;line-height:1;}
+.attachment-main{flex:1;min-width:0;}
+.attachment-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.attachment-meta{font-size:12px;color:var(--text-2);margin-top:2px;}
+.attachment-actions{display:flex;gap:6px;flex-shrink:0;}
 
 /* ── Invite Code ── */
 .invite-code-display{
@@ -960,6 +987,24 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <textarea id="em-country" class="form-input" rows="4" placeholder="z.B. Spanien Polizei: 091, Notruf: 112..." oninput="debounceEmergency()"></textarea>
       </div>
     </div>
+
+    <!-- TAB 9: ATTACHMENTS -->
+    <div id="tab-attachments" class="tab-content">
+      <div class="card">
+        <div class="card-title"><span class="icon">📎</span> Anlagen hochladen</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:10px;">
+          Hier kannst du z.B. Ausweis-Kopien, Buchungsdokumente oder andere Anlagen speichern.
+        </p>
+        <div class="form-group">
+          <input id="att-files" class="form-input" type="file" multiple>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="addAttachments()">Anlagen hinzufügen</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">🗂️</span> Deine Anlagen</div>
+        <div id="attachments-list" class="attachments-list"></div>
+      </div>
+    </div>
   </div><!-- /tab-container -->
 
   <!-- Bottom Navigation -->
@@ -972,6 +1017,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <button class="nav-item" onclick="showTab('budget')" data-tab="budget"><span class="nav-icon">💰</span>Budget</button>
     <button class="nav-item" onclick="showTab('notes')" data-tab="notes"><span class="nav-icon">📝</span>Notizen</button>
     <button class="nav-item" onclick="showTab('emergency')" data-tab="emergency"><span class="nav-icon">🆘</span>Notfall</button>
+    <button class="nav-item" onclick="showTab('attachments')" data-tab="attachments"><span class="nav-icon">📎</span>Anlagen</button>
   </nav>
 </div><!-- /app -->
 
@@ -981,6 +1027,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 // ================================================================
 const SUPABASE_URL = 'https://gtznxajjpsdwocorgoon.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0em54YWpqcHNkd29jb3Jnb29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NDg4NTMsImV4cCI6MjA5MjEyNDg1M30._o9O9tvaOmuhI03tFf4iCQIReL_56HHqs5DyUHwMK7E';
+const ATTACHMENTS_BUCKET = 'trip-attachments';
 
 // ================================================================
 // CONSTANTS
@@ -1047,6 +1094,7 @@ const S = {
   emergency: null,
   flights: {},
   transfer: null,
+  attachments: [],
   realtimeChannel: null,
 };
 
@@ -1131,6 +1179,7 @@ async function loadAllData() {
     loadNotes(),
     loadEmergency(),
     loadWeatherCity(),
+    loadAttachments(),
   ]);
 }
 
@@ -1913,6 +1962,119 @@ function debounceEmergency() {
 }
 
 // ================================================================
+// ATTACHMENTS (Supabase Storage + DB)
+// ================================================================
+async function loadAttachments() {
+  const { data, error } = await sb
+    .from('attachments')
+    .select('*')
+    .eq('trip_id', S.trip.id)
+    .order('created_at', { ascending: false });
+  if (error) { toast('Anlagen konnten nicht geladen werden', 'error'); return; }
+  S.attachments = data || [];
+  renderAttachments();
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 KB';
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.max(1, Math.round(kb))} KB`;
+  return `${(kb / 1024).toFixed(2)} MB`;
+}
+
+function attachmentIcon(name, type) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (type.startsWith('image/')) return '🖼️';
+  if (ext === 'pdf') return '📄';
+  if (['doc', 'docx', 'odt'].includes(ext)) return '📝';
+  return '📎';
+}
+
+async function addAttachments() {
+  const input = document.getElementById('att-files');
+  const files = Array.from(input?.files || []);
+  if (!files.length) { toast('Bitte zuerst Dateien auswählen','error'); return; }
+
+  showSpinner();
+  let added = 0;
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast(`${file.name}: zu groß (max. 10 MB)`, 'error');
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const random = Math.random().toString(36).slice(2, 8);
+    const objectPath = `${S.trip.id}/${Date.now()}_${random}_${safeName}`;
+    const mimeType = file.type || 'application/octet-stream';
+
+    const up = await sb.storage.from(ATTACHMENTS_BUCKET).upload(objectPath, file, { upsert: false, contentType: mimeType });
+    if (up.error) { toast(`${file.name}: Upload fehlgeschlagen`, 'error'); continue; }
+
+    const { error: insError } = await sb.from('attachments').insert({
+      trip_id: S.trip.id,
+      uploaded_by: S.user.id,
+      file_name: file.name,
+      file_path: objectPath,
+      file_size: file.size || 0,
+      mime_type: mimeType,
+    });
+    if (insError) {
+      await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
+      toast(`${file.name}: Metadaten konnten nicht gespeichert werden`, 'error');
+      continue;
+    }
+    added++;
+  }
+  hideSpinner();
+
+  await loadAttachments();
+  if (input) input.value = '';
+  if (added > 0) toast(`${added} Anlage(n) hinzugefügt`, 'success');
+}
+
+async function removeAttachment(id) {
+  const row = S.attachments.find(a => a.id === id);
+  if (!row) return;
+  showSpinner();
+  const rmStorage = await sb.storage.from(ATTACHMENTS_BUCKET).remove([row.file_path]);
+  if (rmStorage.error) { hideSpinner(); toast('Datei konnte nicht gelöscht werden', 'error'); return; }
+  const { error } = await sb.from('attachments').delete().eq('id', id);
+  hideSpinner();
+  if (error) { toast('Anlage-Eintrag konnte nicht gelöscht werden', 'error'); return; }
+  S.attachments = S.attachments.filter(a => a.id !== id);
+  renderAttachments();
+  toast('Anlage entfernt', 'success');
+}
+
+async function renderAttachments() {
+  const el = document.getElementById('attachments-list');
+  if (!el) return;
+  if (!S.attachments.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📎</div><p>Noch keine Anlagen hochgeladen.</p></div>`;
+    return;
+  }
+  const withUrls = await Promise.all(S.attachments.map(async (a) => {
+    const signed = await sb.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(a.file_path, 60 * 60);
+    return { ...a, signed_url: signed.data?.signedUrl || '' };
+  }));
+  el.innerHTML = withUrls.map(a => {
+    const when = new Date(a.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    const safeName = esc(a.file_name || 'Anlage');
+    return `<div class="attachment-item">
+      <div class="attachment-icon">${attachmentIcon(a.file_name || '', a.mime_type || '')}</div>
+      <div class="attachment-main">
+        <div class="attachment-name" title="${safeName}">${safeName}</div>
+        <div class="attachment-meta">${formatBytes(a.file_size)} · ${when}</div>
+      </div>
+      <div class="attachment-actions">
+        ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${a.signed_url}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
+        <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ================================================================
 // REALTIME
 // ================================================================
 async function setupRealtime() {
@@ -1960,6 +2122,9 @@ async function setupRealtime() {
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${S.trip.id}` }, () => {
     loadMembers();
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'attachments', filter: `trip_id=eq.${S.trip.id}` }, () => {
+    loadAttachments();
   });
 
   ch.on('presence', { event: 'sync' }, () => {
