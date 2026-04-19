@@ -1040,7 +1040,10 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <div class="form-group">
           <input id="att-files" class="form-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
         </div>
-        <button id="att-upload-btn" class="btn btn-primary btn-full" onclick="addAttachments()">Anlagen hinzufügen</button>
+        <div class="input-row">
+          <button id="att-upload-btn" class="btn btn-primary btn-full" onclick="addAttachments()">Anlagen hinzufügen</button>
+          <button class="btn btn-secondary" onclick="loadAttachments()">Aktualisieren</button>
+        </div>
       </div>
       <div class="card">
         <div class="card-title"><span class="icon">🗂️</span> Deine Anlagen</div>
