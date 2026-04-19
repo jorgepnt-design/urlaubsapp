@@ -2083,6 +2083,29 @@ async function removeAttachment(id) {
   toast('Anlage entfernt', 'success');
 }
 
+async function renameAttachment(id) {
+  const row = S.attachments.find(a => a.id === id);
+  if (!row) return;
+  const currentName = row.file_name || '';
+  const nextName = prompt('Neuen Namen für die Anlage eingeben:', currentName);
+  if (nextName === null) return;
+  const trimmed = nextName.trim();
+  if (!trimmed) { toast('Name darf nicht leer sein', 'error'); return; }
+  if (trimmed === currentName) return;
+
+  showSpinner();
+  const { error } = await sb.from('attachments').update({ file_name: trimmed }).eq('id', id);
+  hideSpinner();
+  if (error) {
+    toast('Umbenennen fehlgeschlagen: ' + formatSupabaseError(error), 'error');
+    return;
+  }
+  const idx = S.attachments.findIndex(a => a.id === id);
+  if (idx >= 0) S.attachments[idx].file_name = trimmed;
+  renderAttachments();
+  toast('Anlage umbenannt', 'success');
+}
+
 async function renderAttachments() {
   const el = document.getElementById('attachments-list');
   if (!el) return;
@@ -2105,6 +2128,7 @@ async function renderAttachments() {
       </div>
       <div class="attachment-actions">
         ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${a.signed_url}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
+        <button class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
         <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
       </div>
     </div>`;
