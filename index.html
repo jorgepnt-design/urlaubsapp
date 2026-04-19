@@ -1990,10 +1990,37 @@ function attachmentIcon(name, type) {
   return '📎';
 }
 
+function sanitizeFileName(name) {
+  const fallback = 'datei';
+  const raw = String(name || fallback).trim();
+  const normalized = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const safe = normalized
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+/, '')
+    .replace(/^-+/, '')
+    .slice(0, 120);
+  return safe || fallback;
+}
+
+function randomToken(len = 8) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function formatSupabaseError(err) {
+  if (!err) return 'Unbekannter Fehler';
+  const parts = [err.message, err.error, err.statusCode, err.status].filter(Boolean);
+  return parts.join(' | ');
+}
+
 async function addAttachments() {
   const input = document.getElementById('att-files');
   const files = Array.from(input?.files || []);
   if (!files.length) { toast('Bitte zuerst Dateien auswählen','error'); return; }
+  if (!S.trip?.id) { toast('Reise nicht geladen. Bitte Seite neu laden.','error'); return; }
 
   showSpinner();
   let added = 0;
@@ -2002,13 +2029,21 @@ async function addAttachments() {
       toast(`${file.name}: zu groß (max. 10 MB)`, 'error');
       continue;
     }
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const random = Math.random().toString(36).slice(2, 8);
-    const objectPath = `${S.trip.id}/${Date.now()}_${random}_${safeName}`;
+    const safeName = sanitizeFileName(file.name);
+    const objectPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
     const mimeType = file.type || 'application/octet-stream';
 
-    const up = await sb.storage.from(ATTACHMENTS_BUCKET).upload(objectPath, file, { upsert: false, contentType: mimeType });
-    if (up.error) { toast(`${file.name}: Upload fehlgeschlagen`, 'error'); continue; }
+    const up = await sb.storage.from(ATTACHMENTS_BUCKET).upload(objectPath, file, {
+      upsert: true,
+      contentType: mimeType,
+      cacheControl: '3600',
+    });
+    if (up.error) {
+      const msg = `${file.name}: Upload fehlgeschlagen - ${formatSupabaseError(up.error)}`;
+      toast(msg, 'error');
+      alert(msg);
+      continue;
+    }
 
     const { error: insError } = await sb.from('attachments').insert({
       trip_id: S.trip.id,
@@ -2020,7 +2055,9 @@ async function addAttachments() {
     });
     if (insError) {
       await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
-      toast(`${file.name}: Metadaten konnten nicht gespeichert werden`, 'error');
+      const msg = `${file.name}: Metadaten konnten nicht gespeichert werden - ${formatSupabaseError(insError)}`;
+      toast(msg, 'error');
+      alert(msg);
       continue;
     }
     added++;
