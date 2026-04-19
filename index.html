@@ -187,7 +187,16 @@ CREATE POLICY "trips_delete" ON trips FOR DELETE USING (user_id = auth.uid());
 
 CREATE POLICY "trip_members_select" ON trip_members FOR SELECT USING (is_trip_member(trip_id) OR user_id = auth.uid());
 CREATE POLICY "trip_members_insert" ON trip_members FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "trip_members_delete" ON trip_members FOR DELETE USING (user_id = auth.uid());
+CREATE POLICY "trip_members_delete" ON trip_members FOR DELETE USING (
+  user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1
+    FROM trip_members tm
+    WHERE tm.trip_id = trip_members.trip_id
+      AND tm.user_id = auth.uid()
+      AND tm.role = 'owner'
+  )
+);
 
 CREATE POLICY "flights_all" ON flights FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "transfers_all" ON transfers FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
@@ -996,9 +1005,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
           Hier kannst du z.B. Ausweis-Kopien, Buchungsdokumente oder andere Anlagen speichern.
         </p>
         <div class="form-group">
-          <input id="att-files" class="form-input" type="file" multiple>
+          <input id="att-files" class="form-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
         </div>
-        <button class="btn btn-primary btn-full" onclick="addAttachments()">Anlagen hinzufügen</button>
+        <button id="att-upload-btn" class="btn btn-primary btn-full" onclick="addAttachments()">Anlagen hinzufügen</button>
       </div>
       <div class="card">
         <div class="card-title"><span class="icon">🗂️</span> Deine Anlagen</div>
@@ -1407,9 +1416,18 @@ async function removeMember(userId) {
   if (!confirm(`${name} wirklich aus der Reise entfernen?`)) return;
 
   showSpinner();
-  const { error } = await sb.from('trip_members').delete().eq('trip_id', S.trip.id).eq('user_id', userId);
+  const { data, error } = await sb
+    .from('trip_members')
+    .delete()
+    .eq('trip_id', S.trip.id)
+    .eq('user_id', userId)
+    .select('id');
   hideSpinner();
   if (error) { toast('Entfernen nicht möglich: ' + error.message, 'error'); return; }
+  if (!data || data.length === 0) {
+    toast('Mitglied wurde serverseitig nicht gelöscht. Bitte RLS-Policy für trip_members_delete prüfen.', 'error');
+    return;
+  }
 
   S.members = S.members.filter(m => m.user_id !== userId);
   renderMembers();
@@ -2016,6 +2034,32 @@ function formatSupabaseError(err) {
   return parts.join(' | ');
 }
 
+function setAttachmentUploadLoading(isLoading, label = '') {
+  const btn = document.getElementById('att-upload-btn');
+  const input = document.getElementById('att-files');
+  if (btn) {
+    if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent || 'Anlagen hinzufügen';
+    btn.disabled = !!isLoading;
+    btn.textContent = isLoading ? (label || 'Upload läuft...') : btn.dataset.defaultLabel;
+  }
+  if (input) input.disabled = !!isLoading;
+}
+
+function isAllowedAttachment(file) {
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+  const validType = ['application/pdf', 'image/jpeg', 'image/png'].includes(type);
+  const validExt = ['.pdf', '.jpg', '.jpeg', '.png'].some(ext => name.endsWith(ext));
+  return validType || validExt;
+}
+
+function uploadWithTimeout(path, file, options, timeoutMs = 120000) {
+  return Promise.race([
+    sb.storage.from(ATTACHMENTS_BUCKET).upload(path, file, options),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Upload-Timeout (120s)')), timeoutMs)),
+  ]);
+}
+
 async function addAttachments() {
   const input = document.getElementById('att-files');
   const files = Array.from(input?.files || []);
@@ -2023,50 +2067,70 @@ async function addAttachments() {
   if (!S.trip?.id) { toast('Reise nicht geladen. Bitte Seite neu laden.','error'); return; }
 
   showSpinner();
-  let added = 0;
-  for (const file of files) {
-    if (file.size > 10 * 1024 * 1024) {
-      toast(`${file.name}: zu groß (max. 10 MB)`, 'error');
-      continue;
-    }
-    const safeName = sanitizeFileName(file.name);
-    const objectPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
-    const mimeType = file.type || 'application/octet-stream';
+  setAttachmentUploadLoading(true, `Upload: 0/${files.length}`);
+  try {
+    let added = 0;
+    const maxBytes = 5 * 1024 * 1024;
 
-    const up = await sb.storage.from(ATTACHMENTS_BUCKET).upload(objectPath, file, {
-      upsert: true,
-      contentType: mimeType,
-      cacheControl: '3600',
-    });
-    if (up.error) {
-      const msg = `${file.name}: Upload fehlgeschlagen - ${formatSupabaseError(up.error)}`;
-      toast(msg, 'error');
-      alert(msg);
-      continue;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setAttachmentUploadLoading(true, `Upload: ${i + 1}/${files.length}`);
+
+      if (!isAllowedAttachment(file)) {
+        toast(`${file.name}: Nur PDF, JPG, JPEG und PNG erlaubt`, 'error');
+        continue;
+      }
+      if (file.size > maxBytes) {
+        const mb = (file.size / (1024 * 1024)).toFixed(2);
+        toast(`${file.name}: ${mb} MB ist zu groß (max. 5.00 MB)`, 'error');
+        continue;
+      }
+
+      const safeName = sanitizeFileName(file.name);
+      const objectPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
+      const mimeType = file.type || 'application/octet-stream';
+
+      try {
+        const up = await uploadWithTimeout(objectPath, file, {
+          upsert: true,
+          contentType: mimeType,
+          cacheControl: '3600',
+        });
+        if (up.error) {
+          const msg = `${file.name}: Upload fehlgeschlagen - ${formatSupabaseError(up.error)}`;
+          toast(msg, 'error');
+          continue;
+        }
+      } catch (err) {
+        const msg = `${file.name}: Upload fehlgeschlagen - ${err?.message || 'Unbekannter Fehler'}`;
+        toast(msg, 'error');
+        continue;
+      }
+
+      const { error: insError } = await sb.from('attachments').insert({
+        trip_id: S.trip.id,
+        uploaded_by: S.user.id,
+        file_name: file.name,
+        file_path: objectPath,
+        file_size: file.size || 0,
+        mime_type: mimeType,
+      });
+      if (insError) {
+        await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
+        const msg = `${file.name}: Metadaten konnten nicht gespeichert werden - ${formatSupabaseError(insError)}`;
+        toast(msg, 'error');
+        continue;
+      }
+      added++;
     }
 
-    const { error: insError } = await sb.from('attachments').insert({
-      trip_id: S.trip.id,
-      uploaded_by: S.user.id,
-      file_name: file.name,
-      file_path: objectPath,
-      file_size: file.size || 0,
-      mime_type: mimeType,
-    });
-    if (insError) {
-      await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
-      const msg = `${file.name}: Metadaten konnten nicht gespeichert werden - ${formatSupabaseError(insError)}`;
-      toast(msg, 'error');
-      alert(msg);
-      continue;
-    }
-    added++;
+    await loadAttachments();
+    if (input) input.value = '';
+    if (added > 0) toast(`${added} Anlage(n) hinzugefügt`, 'success');
+  } finally {
+    setAttachmentUploadLoading(false);
+    hideSpinner();
   }
-  hideSpinner();
-
-  await loadAttachments();
-  if (input) input.value = '';
-  if (added > 0) toast(`${added} Anlage(n) hinzugefügt`, 'success');
 }
 
 async function removeAttachment(id) {
