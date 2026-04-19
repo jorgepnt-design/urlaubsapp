@@ -592,7 +592,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .attachment-main{flex:1;min-width:0;}
 .attachment-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .attachment-meta{font-size:12px;color:var(--text-2);margin-top:2px;}
-.attachment-actions{display:flex;gap:6px;flex-shrink:0;}
+.attachment-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;}
 
 /* ── Invite Code ── */
 .invite-code-display{
@@ -695,6 +695,39 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   #app-header{padding:0 12px;}
   #app-header .trip-name{font-size:16px;}
   .btn-logout{padding:6px 10px;font-size:12px;}
+
+  .attachment-item{
+    display:grid;
+    grid-template-columns:24px minmax(0,1fr);
+    grid-template-areas:
+      "icon main"
+      "actions actions";
+    align-items:start;
+    gap:8px 10px;
+    padding:12px;
+  }
+  .attachment-icon{grid-area:icon;margin-top:2px;}
+  .attachment-main{grid-area:main;min-width:0;width:100%;}
+  .attachment-name{
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    line-height:1.35;
+  }
+  .attachment-actions{
+    grid-area:actions;
+    width:100%;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+  }
+  .attachment-actions .btn{
+    width:100%;
+    min-height:40px;
+    padding:10px 8px;
+  }
 }
 </style>
 </head>
@@ -2060,6 +2093,13 @@ function uploadWithTimeout(path, file, options, timeoutMs = 120000) {
   ]);
 }
 
+function runWithTimeout(promise, timeoutMs = 20000, label = 'Vorgang') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label}-Timeout (${Math.round(timeoutMs/1000)}s)`)), timeoutMs)),
+  ]);
+}
+
 async function addAttachments() {
   const input = document.getElementById('att-files');
   const files = Array.from(input?.files || []);
@@ -2158,16 +2198,29 @@ async function renameAttachment(id) {
   if (trimmed === currentName) return;
 
   showSpinner();
-  const { error } = await sb.from('attachments').update({ file_name: trimmed }).eq('id', id);
-  hideSpinner();
-  if (error) {
-    toast('Umbenennen fehlgeschlagen: ' + formatSupabaseError(error), 'error');
-    return;
+  try {
+    const { data, error } = await runWithTimeout(
+      sb.from('attachments').update({ file_name: trimmed }).eq('id', id).select('id,file_name').single(),
+      20000,
+      'Umbenennen'
+    );
+    if (error) {
+      toast('Umbenennen fehlgeschlagen: ' + formatSupabaseError(error), 'error');
+      return;
+    }
+    if (!data) {
+      toast('Umbenennen fehlgeschlagen: Keine Rückmeldung vom Server', 'error');
+      return;
+    }
+    const idx = S.attachments.findIndex(a => a.id === id);
+    if (idx >= 0) S.attachments[idx].file_name = data.file_name;
+    await renderAttachments();
+    toast('Anlage umbenannt', 'success');
+  } catch (err) {
+    toast('Umbenennen fehlgeschlagen: ' + (err?.message || 'Unbekannter Fehler'), 'error');
+  } finally {
+    hideSpinner();
   }
-  const idx = S.attachments.findIndex(a => a.id === id);
-  if (idx >= 0) S.attachments[idx].file_name = trimmed;
-  renderAttachments();
-  toast('Anlage umbenannt', 'success');
 }
 
 async function renderAttachments() {
