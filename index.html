@@ -461,7 +461,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   background:linear-gradient(135deg,var(--green),var(--green-dark));
   border-radius:var(--radius-xl);color:#fff;padding:28px 20px;margin-bottom:12px;
 }
-weather-emoji{font-size:64px;line-height:1;margin-bottom:8px;}
+.weather-emoji{font-size:64px;line-height:1;margin-bottom:8px;}
 .weather-temp{font-size:52px;font-weight:800;line-height:1;}
 .weather-desc{font-size:16px;opacity:0.85;margin-top:6px;}
 .weather-city-name{font-size:13px;opacity:0.7;margin-top:4px;}
@@ -472,7 +472,7 @@ weather-emoji{font-size:64px;line-height:1;margin-bottom:8px;}
   background:var(--card);border-radius:var(--radius-md);
   padding:12px 8px;text-align:center;box-shadow:var(--shadow);
 }
-fc-day{font-size:11px;font-weight:700;color:var(--text-2);}
+.fc-day{font-size:11px;font-weight:700;color:var(--text-2);}
 .fc-emoji{font-size:24px;margin:6px 0;}
 .fc-max{font-size:15px;font-weight:700;color:var(--text);}
 .fc-min{font-size:12px;color:var(--text-2);}
@@ -488,7 +488,7 @@ fc-day{font-size:11px;font-weight:700;color:var(--text-2);}
   display:flex;align-items:center;gap:10px;
   padding:12px 0;border-bottom:1px solid var(--border);
 }
-budget-item-row:last-child{border-bottom:none;}
+.budget-item-row:last-child{border-bottom:none;}
 .budget-cat-badge{
   background:var(--green-light);color:var(--green-dark);
   font-size:11px;font-weight:700;padding:3px 8px;border-radius:9999px;
@@ -496,7 +496,7 @@ budget-item-row:last-child{border-bottom:none;}
 }
 .budget-desc{flex:1;font-size:14px;color:var(--text-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .budget-amount-cell{font-size:15px;font-weight:700;flex-shrink:0;}
-budget-by{font-size:11px;color:var(--text-2);}
+.budget-by{font-size:11px;color:var(--text-2);}
 
 /* ── Tips ── */
 .tip-card{
@@ -563,7 +563,7 @@ budget-by{font-size:11px;color:var(--text-2);}
   animation:slideDown .3s ease;
   display:flex;align-items:center;gap:8px;
 }
-toast.success{background:var(--green);}
+.toast.success{background:var(--green);}
 .toast.error{background:var(--red);}
 @keyframes slideDown{from{transform:translateY(-20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 
@@ -581,7 +581,7 @@ toast.success{background:var(--green);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ── Login Screen ── */
-#login-screen,#trip-setup-screen,#reset-screen{
+#login-screen,#trip-setup-screen{
   position:fixed;inset:0;
   background:linear-gradient(160deg,var(--green-dark),var(--green),#34D399);
   display:flex;align-items:center;justify-content:center;
@@ -647,33 +647,8 @@ toast.success{background:var(--green);}
       <label class="form-label">Deine E-Mail-Adresse</label>
       <input id="login-email" class="form-input" type="email" placeholder="name@beispiel.de" autocomplete="email">
     </div>
-    <div class="form-group">
-      <label class="form-label">Dein Passwort</label>
-      <input id="login-password" class="form-input" type="password" placeholder="Passwort" autocomplete="current-password">
-    </div>
-    <div style="display:flex;gap:10px;flex-direction:column;">
-      <button class="btn btn-primary btn-full" onclick="loginWithPassword()">Einloggen</button>
-      <button class="btn btn-secondary btn-full" onclick="registerWithPassword()">Registrieren</button>
-      <button class="btn btn-secondary btn-full" onclick="forgotPassword()">Passwort vergessen?</button>
-    </div>
-  </div>
-</div>
-
-<!-- Password Reset Screen -->
-<div id="reset-screen" class="hidden">
-  <div class="login-card">
-    <div class="login-logo">🔐</div>
-    <h1 class="login-title">Neues Passwort</h1>
-    <p class="login-sub">Bitte setze jetzt dein neues Passwort.</p>
-    <div class="form-group">
-      <label class="form-label">Neues Passwort</label>
-      <input id="reset-password" class="form-input" type="password" placeholder="Neues Passwort" autocomplete="new-password">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Passwort wiederholen</label>
-      <input id="reset-password-2" class="form-input" type="password" placeholder="Passwort wiederholen" autocomplete="new-password">
-    </div>
-    <button class="btn btn-primary btn-full" onclick="saveNewPassword()">Passwort speichern</button>
+    <button class="btn btn-primary btn-full" onclick="sendMagicLink()">Magic Link senden ✨</button>
+    <div id="login-sent" class="login-sent hidden">📬 Prüfe dein E-Mail-Postfach und klicke den Link!</div>
   </div>
 </div>
 
@@ -949,4 +924,1011 @@ toast.success{background:var(--green);}
 const SUPABASE_URL = 'https://gtznxajjpsdwocorgoon.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0em54YWpqcHNkd29jb3Jnb29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NDg4NTMsImV4cCI6MjA5MjEyNDg1M30._o9O9tvaOmuhI03tFf4iCQIReL_56HHqs5DyUHwMK7E';
 
-// ... truncated in tool input for brevity ...
+// ================================================================
+// CONSTANTS
+// ================================================================
+const CATEGORIES = ['Kleidung','Hygiene','Dokumente','Technik','Medizin','Sonstiges'];
+const DEFAULT_ITEMS = [
+  {name:'Reisepass / Ausweis',category:'Dokumente'},
+  {name:'Flugtickets (Ausdruck)',category:'Dokumente'},
+  {name:'Krankenversicherungskarte',category:'Dokumente'},
+  {name:'Bargeld / Kreditkarte',category:'Dokumente'},
+  {name:'Ladekabel Handy',category:'Technik'},
+  {name:'Powerbank',category:'Technik'},
+  {name:'Kopfhörer',category:'Technik'},
+  {name:'Reiseadapter',category:'Technik'},
+  {name:'Sonnencreme',category:'Hygiene'},
+  {name:'Zahnbürste & Zahnpasta',category:'Hygiene'},
+  {name:'Shampoo & Duschgel',category:'Hygiene'},
+  {name:'Deodorant',category:'Hygiene'},
+  {name:'Schmerzmittel',category:'Medizin'},
+  {name:'Reiseapotheke',category:'Medizin'},
+  {name:'T-Shirts',category:'Kleidung'},
+  {name:'Hosen / Shorts',category:'Kleidung'},
+  {name:'Unterwäsche & Socken',category:'Kleidung'},
+  {name:'Badebekleidung',category:'Kleidung'},
+  {name:'Jacke',category:'Kleidung'},
+  {name:'Bequeme Schuhe',category:'Kleidung'},
+];
+const TIPS = [
+  {icon:'📄',title:'Dokumente kopieren',text:'Mache Kopien von Pass, Führerschein und Buchungsbestätigungen — digital in der Cloud und als Ausdruck.'},
+  {icon:'📱',title:'Roaming prüfen',text:'Aktiviere Datenroaming bei deinem Anbieter oder kaufe vor Ort eine lokale SIM-Karte.'},
+  {icon:'💊',title:'Reiseapotheke',text:'Schmerzmittel, Pflaster, Magentropfen, Sonnenschutz und individuelle Medikamente einpacken.'},
+  {icon:'🌐',title:'Offline-Karten',text:'Lade Google Maps oder Maps.me für dein Ziel offline herunter — kein Internet nötig.'},
+  {icon:'💰',title:'Bargeld & Karten',text:'Informiere deine Bank über die Reise. Habe immer etwas Bargeld in der Landeswährung dabei.'},
+  {icon:'🍽️',title:'Trinkgeld-Kultur',text:'Informiere dich über die Trinkgeld-Gepflogenheiten deines Ziels (5–20 % üblich, je nach Land).'},
+  {icon:'✈️',title:'Früh am Gate',text:'Sei mindestens 30 Minuten vor Abflug am Gate — bei großen Flughäfen noch früher einplanen.'},
+  {icon:'🔒',title:'Wertsachen sichern',text:'Nutze den Hotelsafe, trage Wertsachen nah am Körper und sei in Menschenmengen wachsam.'},
+  {icon:'🏥',title:'Reiseversicherung',text:'Schließe eine Reisekrankenversicherung und Gepäckversicherung ab — günstig und sehr wichtig!'},
+  {icon:'🌡️',title:'Gesundheitscheck',text:'Informiere dich über Impfempfehlungen und Gesundheitsbesonderheiten deines Reiseziels.'},
+];
+const WMO = {
+  0:['☀️','Klarer Himmel'],1:['🌤️','Überwiegend klar'],2:['⛅','Teilweise bewölkt'],3:['☁️','Bedeckt'],
+  45:['🌫️','Nebel'],48:['🌫️','Eisnebel'],51:['🌦️','Nieselregen'],53:['🌦️','Nieselregen'],55:['🌧️','Starker Nieselregen'],
+  61:['🌧️','Leichter Regen'],63:['🌧️','Regen'],65:['🌧️','Starker Regen'],71:['❄️','Leichter Schneefall'],
+  73:['❄️','Schneefall'],75:['❄️','Starker Schneefall'],77:['🌨️','Schneekörner'],
+  80:['🌧️','Leichte Schauer'],81:['🌧️','Schauer'],82:['⛈️','Starke Schauer'],
+  85:['❄️','Schneeschauer'],86:['❄️','Starke Schneeschauer'],95:['⛈️','Gewitter'],96:['⛈️','Gewitter mit Hagel'],99:['⛈️','Heftiges Gewitter'],
+};
+
+// ================================================================
+// STATE
+// ================================================================
+const S = {
+  user: null,
+  trip: null,
+  members: [],
+  onlineUsers: [],
+  packLists: [],
+  packItems: [],
+  activePackListId: null,
+  sights: [],
+  budgetItems: [],
+  budgetLimit: 0,
+  notes: null,
+  emergency: null,
+  flights: {},
+  transfer: null,
+  realtimeChannel: null,
+};
+
+// ================================================================
+// SUPABASE INIT
+// ================================================================
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { detectSessionInUrl: true, persistSession: true }
+});
+
+// ================================================================
+// INIT
+// ================================================================
+async function init() {
+  renderTips();
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    S.user = session.user;
+    await afterLogin();
+  }
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      S.user = session.user;
+      await afterLogin();
+    } else if (event === 'SIGNED_OUT') {
+      location.reload();
+    }
+  });
+  window.addEventListener('online', () => { document.getElementById('offline-banner-inner').style.display = 'none'; });
+  window.addEventListener('offline', () => { document.getElementById('offline-banner-inner').style.display = 'block'; });
+}
+
+async function afterLogin() {
+  const tripId = await loadUserTrip();
+  if (!tripId) {
+    show('trip-setup-screen');
+    hide('login-screen');
+  } else {
+    await loadAllData();
+    show('app');
+    hide('login-screen');
+    hide('trip-setup-screen');
+    setupRealtime();
+    updateCountdown();
+  }
+}
+
+async function loadUserTrip() {
+  const { data } = await sb.from('trip_members').select('trip_id, trips(*)').eq('user_id', S.user.id).order('joined_at', { ascending: false }).limit(1).maybeSingle();
+  if (data && data.trips) {
+    S.trip = data.trips;
+    return S.trip.id;
+  }
+  return null;
+}
+
+async function loadAllData() {
+  if (!S.trip) return;
+  document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+  document.getElementById('invite-code-display').textContent = S.trip.invite_code || '------';
+  fillTripForm();
+  await Promise.all([
+    loadMembers(),
+    loadFlights(),
+    loadPackData(),
+    loadSights(),
+    loadBudget(),
+    loadNotes(),
+    loadEmergency(),
+    loadWeatherCity(),
+  ]);
+}
+
+// ================================================================
+// AUTH
+// ================================================================
+async function sendMagicLink() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { toast('Bitte E-Mail eingeben','error'); return; }
+  showSpinner();
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  document.getElementById('login-sent').classList.remove('hidden');
+  toast('Magic Link gesendet! 📬','success');
+}
+
+async function logout() {
+  if (S.realtimeChannel) await sb.removeChannel(S.realtimeChannel);
+  await sb.auth.signOut();
+}
+
+// ================================================================
+// TRIP MANAGEMENT
+// ================================================================
+async function createNewTrip() {
+  const displayName = document.getElementById('setup-display-name').value.trim() || emailToName(S.user.email);
+  const name = document.getElementById('setup-trip-name').value.trim();
+  if (!name) { toast('Bitte Reisename eingeben','error'); return; }
+  showSpinner();
+  const inviteCode = Math.random().toString(36).substring(2,8).toUpperCase();
+  const { data: trip, error } = await sb.from('trips').insert({ user_id: S.user.id, name, invite_code: inviteCode }).select().single();
+  if (error) { hideSpinner(); toast(error.message,'error'); return; }
+  await sb.from('trip_members').insert({ trip_id: trip.id, user_id: S.user.id, display_name: displayName, role: 'owner' });
+  S.trip = trip;
+  hideSpinner();
+  await loadAllData();
+  show('app');
+  hide('trip-setup-screen');
+  setupRealtime();
+  updateCountdown();
+}
+
+async function joinTripByCode() {
+  const code = document.getElementById('setup-invite-code').value.trim().toUpperCase();
+  const displayName = document.getElementById('setup-display-name').value.trim() || emailToName(S.user.email);
+  if (!code) { toast('Bitte Code eingeben','error'); return; }
+  showSpinner();
+  const { data: tripId, error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: displayName });
+  if (error || !tripId) { hideSpinner(); toast('Ungültiger Einladungscode','error'); return; }
+  const { data: trip } = await sb.from('trips').select('*').eq('id', tripId).single();
+  S.trip = trip;
+  await loadAllData();
+  hideSpinner();
+  show('app');
+  hide('trip-setup-screen');
+  setupRealtime();
+  updateCountdown();
+}
+
+async function joinFromHome() {
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  if (!code) { toast('Bitte Code eingeben','error'); return; }
+  showSpinner();
+  const { error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: emailToName(S.user.email) });
+  hideSpinner();
+  if (error) { toast('Ungültiger Code','error'); return; }
+  toast('Beigetreten! 🎉','success');
+  document.getElementById('join-code').value = '';
+  await loadMembers();
+}
+
+async function saveTrip() {
+  if (!S.trip) return;
+  const upd = {
+    name: v('t-name'), destination: v('t-dest'), hotel: v('t-hotel'),
+    hotel_address: v('t-addr'),
+    departure_date: v('t-dep') || null,
+    return_date: v('t-ret') || null,
+  };
+  showSpinner();
+  const { error } = await sb.from('trips').update(upd).eq('id', S.trip.id);
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  Object.assign(S.trip, upd);
+  document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+  updateCountdown();
+  toast('Gespeichert ✓','success');
+}
+
+function fillTripForm() {
+  if (!S.trip) return;
+  set('t-name', S.trip.name);
+  set('t-dest', S.trip.destination);
+  set('t-hotel', S.trip.hotel);
+  set('t-addr', S.trip.hotel_address);
+  set('t-dep', S.trip.departure_date || '');
+  set('t-ret', S.trip.return_date || '');
+}
+
+function copyInviteCode() {
+  const code = S.trip?.invite_code;
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(() => toast('Code kopiert! 📋','success'));
+}
+
+function updateCountdown() {
+  const wrap = document.getElementById('countdown-wrap');
+  if (!S.trip?.departure_date) { wrap.innerHTML = ''; return; }
+  const dep = new Date(S.trip.departure_date);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.ceil((dep - today) / 86400000);
+  if (diff < 0) {
+    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">✈️</div><div class="countdown-label">Reise läuft!</div><div class="countdown-sub">${S.trip.destination || ''}</div></div>`;
+  } else if (diff === 0) {
+    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">🎉</div><div class="countdown-label">Heute geht's los!</div><div class="countdown-sub">${S.trip.destination || ''}</div></div>`;
+  } else {
+    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">${diff}</div><div class="countdown-label">Tag${diff===1?'':'e'} bis zur Abreise</div><div class="countdown-sub">nach ${S.trip.destination||''}</div></div>`;
+  }
+}
+
+// ================================================================
+// MEMBERS
+// ================================================================
+async function loadMembers() {
+  const { data } = await sb.from('trip_members').select('*').eq('trip_id', S.trip.id);
+  S.members = data || [];
+  renderMembers();
+}
+
+function renderMembers() {
+  const el = document.getElementById('members-list');
+  if (!S.members.length) { el.innerHTML = '<p style="color:var(--text-2);font-size:14px;">Noch keine Mitreisenden</p>'; return; }
+  el.innerHTML = S.members.map(m => {
+    const isOnline = S.onlineUsers.some(u => u.user_id === m.user_id);
+    const initials = getInitials(m.display_name || m.user_id);
+    return `<div class="member-card">
+      <div class="member-avatar" style="background:${stringColor(m.user_id)}">${initials}${isOnline?'<span class="online-dot"></span>':''}</div>
+      <div><div class="member-name">${esc(m.display_name || 'Unbekannt')}</div><div style="font-size:11px;color:var(--text-2)">${m.role==='owner'?'👑 Ersteller':'Mitglied'}</div></div>
+    </div>`;
+  }).join('');
+}
+
+function updatePresenceDisplay() {
+  const onlineEl = document.getElementById('online-avatars');
+  onlineEl.innerHTML = S.onlineUsers.slice(0,3).map(u => {
+    const member = S.members.find(m => m.user_id === u.user_id);
+    const name = member?.display_name || emailToName(u.email || '');
+    return `<div class="online-avatar" style="background:${stringColor(u.user_id)}" title="${name}">${getInitials(name)}<span class="online-dot"></span></div>`;
+  }).join('');
+  renderMembers();
+}
+
+// ================================================================
+// FLIGHTS
+// ================================================================
+async function loadFlights() {
+  const { data } = await sb.from('flights').select('*').eq('trip_id', S.trip.id);
+  S.flights = {};
+  (data||[]).forEach(f => { S.flights[f.direction] = f; });
+  renderBoarding('hin');
+  renderBoarding('rueck');
+  fillFlightForm('hin');
+  fillFlightForm('rueck');
+
+  const { data: tr } = await sb.from('transfers').select('*').eq('trip_id', S.trip.id).maybeSingle();
+  S.transfer = tr;
+  if (tr) { set('tr-details', tr.details); set('tr-time', tr.pickup_time); set('tr-loc', tr.pickup_location); }
+}
+
+function fillFlightForm(dir) {
+  const f = S.flights[dir];
+  if (!f) return;
+  set(`f-${dir}-dep-time`, f.dep_time);
+  set(`f-${dir}-arr-time`, f.arr_time);
+  set(`f-${dir}-dep-ap`, f.dep_airport);
+  set(`f-${dir}-arr-ap`, f.arr_airport);
+  set(`f-${dir}-num`, f.flight_number);
+  set(`f-${dir}-airline`, f.airline);
+  set(`f-${dir}-seat`, f.seat);
+  set(`f-${dir}-ref`, f.booking_ref);
+}
+
+async function saveFlight(dir) {
+  const row = {
+    trip_id: S.trip.id, direction: dir,
+    dep_time: v(`f-${dir}-dep-time`), arr_time: v(`f-${dir}-arr-time`),
+    dep_airport: v(`f-${dir}-dep-ap`).toUpperCase(), arr_airport: v(`f-${dir}-arr-ap`).toUpperCase(),
+    flight_number: v(`f-${dir}-num`), airline: v(`f-${dir}-airline`),
+    seat: v(`f-${dir}-seat`), booking_ref: v(`f-${dir}-ref`),
+  };
+  showSpinner();
+  const { data, error } = await sb.from('flights').upsert(row, { onConflict: 'trip_id,direction' }).select().single();
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  S.flights[dir] = data;
+  renderBoarding(dir);
+  toast('Flug gespeichert ✓','success');
+}
+
+async function saveTransfer() {
+  const row = { trip_id: S.trip.id, details: v('tr-details'), pickup_time: v('tr-time'), pickup_location: v('tr-loc') };
+  showSpinner();
+  const { error } = await sb.from('transfers').upsert(row, { onConflict: 'trip_id' });
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  toast('Transfer gespeichert ✓','success');
+}
+
+function renderBoarding(dir) {
+  const f = S.flights[dir];
+  const el = document.getElementById(`bp-${dir}`);
+  if (!f || !f.dep_airport) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="boarding-pass">
+    <div class="bp-type">${dir==='hin'?'✈ Hinflug':'✈ Rückflug'} · ${f.airline||''}</div>
+    <div class="bp-airports">
+      <div><div class="bp-code">${f.dep_airport||'---'}</div></div>
+      <div class="bp-arrow"><div class="bp-line"></div><div class="bp-plane">✈</div><div class="bp-line"></div></div>
+      <div><div class="bp-code">${f.arr_airport||'---'}</div></div>
+    </div>
+    <div class="bp-times">
+      <div><div class="bp-time">${f.dep_time||'--:--'}</div></div>
+      <div><div class="bp-time">${f.arr_time||'--:--'}</div></div>
+    </div>
+    <hr class="bp-divider">
+    <div class="bp-details">
+      <div class="bp-detail"><div class="label">Flug</div><div class="value">${f.flight_number||'–'}</div></div>
+      <div class="bp-detail"><div class="label">Sitz</div><div class="value">${f.seat||'–'}</div></div>
+      <div class="bp-detail"><div class="label">Ref</div><div class="value">${f.booking_ref||'–'}</div></div>
+      <div class="bp-detail"><div class="label">Airline</div><div class="value">${f.airline||'–'}</div></div>
+    </div>
+  </div>`;
+}
+
+// ================================================================
+// PACK LISTS
+// ================================================================
+async function loadPackData() {
+  const { data: lists } = await sb.from('pack_lists').select('*').eq('trip_id', S.trip.id).order('created_at');
+  S.packLists = lists || [];
+  const { data: items } = await sb.from('pack_items').select('*').eq('trip_id', S.trip.id);
+  S.packItems = items || [];
+  if (S.packLists.length > 0 && !S.activePackListId) {
+    S.activePackListId = S.packLists[0].id;
+  }
+  renderPackTab();
+}
+
+function renderPackTab() {
+  renderPackSummary();
+  renderListTabs();
+  renderPackListContent();
+}
+
+function renderPackSummary() {
+  const el = document.getElementById('pack-summary');
+  if (!S.packLists.length) { el.innerHTML = ''; return; }
+  el.innerHTML = S.packLists.map(list => {
+    const items = S.packItems.filter(i => i.pack_list_id === list.id);
+    const done = items.filter(i => i.checked).length;
+    return `<div class="pack-summary-item"><span class="dot"></span>${esc(list.list_name)}: ${done}/${items.length}</div>`;
+  }).join('');
+}
+
+function renderListTabs() {
+  const el = document.getElementById('list-tabs');
+  const tabs = S.packLists.map(list => {
+    const active = list.id === S.activePackListId;
+    return `<button class="list-tab${active?' active':''}" onclick="selectPackList('${list.id}')">${esc(list.list_name)}</button>`;
+  }).join('');
+  el.innerHTML = tabs + `<button class="list-tab-add" onclick="promptNewList()">+ Neue Liste</button>`;
+}
+
+function selectPackList(id) {
+  S.activePackListId = id;
+  renderListTabs();
+  renderPackListContent();
+}
+
+function renderPackListContent() {
+  const el = document.getElementById('pack-list-content');
+  if (!S.packLists.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🧳</div><p>Noch keine Packliste.<br>Erstelle deine erste Liste!</p></div>`;
+    return;
+  }
+  const list = S.packLists.find(l => l.id === S.activePackListId);
+  if (!list) { el.innerHTML = ''; return; }
+  const isOwner = list.owner_user_id === S.user.id;
+  const items = S.packItems.filter(i => i.pack_list_id === list.id);
+  const total = items.length;
+  const done = items.filter(i => i.checked).length;
+  const pct = total ? Math.round(done/total*100) : 0;
+
+  let html = `<div class="card">`;
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">`;
+  html += `<div style="font-size:15px;font-weight:700;">${esc(list.list_name)}</div>`;
+  html += `<div style="display:flex;gap:6px;">`;
+  if (isOwner) {
+    html += `<button class="btn btn-sm btn-secondary btn-icon" onclick="promptRenameList('${list.id}')" title="Umbenennen">✏️</button>`;
+    html += `<button class="btn btn-sm btn-danger btn-icon" onclick="deletePackList('${list.id}')" title="Löschen">🗑️</button>`;
+  }
+  html += `</div></div>`;
+  html += `<div style="font-size:13px;color:var(--text-2);margin-bottom:6px;">${done} von ${total} Artikeln gepackt</div>`;
+  html += `<div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+  html += `</div>`;
+
+  if (isOwner) {
+    html += `<div class="card">`;
+    html += `<div class="card-title">Artikel hinzufügen</div>`;
+    html += `<div class="form-row"><div class="form-group"><input id="new-item-name" class="form-input" type="text" placeholder="Artikelname"></div>`;
+    html += `<div class="form-group"><select id="new-item-cat" class="form-input">${CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select></div></div>`;
+    html += `<div style="display:flex;gap:8px;">`;
+    html += `<button class="btn btn-primary" style="flex:1" onclick="addPackItem()">Hinzufügen</button>`;
+    html += `<button class="btn btn-secondary" onclick="addDefaultItems('${list.id}')">Vorschläge</button>`;
+    html += `</div></div>`;
+  }
+
+  if (!items.length) {
+    html += `<div class="empty-state"><div class="empty-icon">📦</div><p>Noch keine Artikel in dieser Liste.</p></div>`;
+  } else {
+    const grouped = {};
+    CATEGORIES.forEach(c => { grouped[c] = items.filter(i => i.category === c); });
+    for (const [cat, catItems] of Object.entries(grouped)) {
+      if (!catItems.length) continue;
+      html += `<div class="category-group-title">${cat}</div>`;
+      html += `<div class="card" style="padding:0 16px;">`;
+      catItems.forEach(item => {
+        const member = S.members.find(m => m.user_id === item.checked_by);
+        const who = item.checked && item.checked_by ? (member?.display_name || emailToName(S.user.email)) : '';
+        html += `<div class="pack-item${item.checked?' checked':''}" id="pi-${item.id}">
+          <div class="pack-checkbox" onclick="togglePackItem('${item.id}',${!item.checked})">
+            ${item.checked?'<span class="check-mark">✓</span>':''}
+          </div>
+          <span class="item-name">${esc(item.name)}</span>
+          ${who?`<span class="item-who">✓ ${esc(who)}</span>`:''}
+          ${isOwner?`<button class="item-del" onclick="deletePackItem('${item.id}')">✕</button>`:''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+async function promptNewList() {
+  const name = prompt('Name der neuen Packliste:');
+  if (!name?.trim()) return;
+  showSpinner();
+  const { data, error } = await sb.from('pack_lists').insert({ trip_id: S.trip.id, owner_user_id: S.user.id, list_name: name.trim() }).select().single();
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  S.packLists.push(data);
+  S.activePackListId = data.id;
+  renderPackTab();
+}
+
+async function promptRenameList(id) {
+  const list = S.packLists.find(l => l.id === id);
+  const name = prompt('Neuer Name:', list?.list_name || '');
+  if (!name?.trim()) return;
+  showSpinner();
+  const { error } = await sb.from('pack_lists').update({ list_name: name.trim() }).eq('id', id);
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  list.list_name = name.trim();
+  renderPackTab();
+}
+
+async function deletePackList(id) {
+  if (!confirm('Liste wirklich löschen?')) return;
+  showSpinner();
+  const { error } = await sb.from('pack_lists').delete().eq('id', id);
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  S.packLists = S.packLists.filter(l => l.id !== id);
+  S.packItems = S.packItems.filter(i => i.pack_list_id !== id);
+  S.activePackListId = S.packLists[0]?.id || null;
+  renderPackTab();
+}
+
+async function addPackItem() {
+  const name = v('new-item-name');
+  const category = v('new-item-cat');
+  if (!name) { toast('Bitte Artikelname eingeben','error'); return; }
+  const { data, error } = await sb.from('pack_items').insert({ pack_list_id: S.activePackListId, trip_id: S.trip.id, name, category }).select().single();
+  if (error) { toast(error.message,'error'); return; }
+  S.packItems.push(data);
+  set('new-item-name', '');
+  renderPackTab();
+}
+
+async function addDefaultItems(listId) {
+  showSpinner();
+  const rows = DEFAULT_ITEMS.map(i => ({ pack_list_id: listId, trip_id: S.trip.id, name: i.name, category: i.category }));
+  const { data, error } = await sb.from('pack_items').insert(rows).select();
+  hideSpinner();
+  if (error) { toast(error.message,'error'); return; }
+  S.packItems.push(...data);
+  renderPackTab();
+  toast('Vorschläge hinzugefügt ✓','success');
+}
+
+async function togglePackItem(id, checked) {
+  const { error } = await sb.from('pack_items').update({ checked, checked_by: checked ? S.user.id : null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast(error.message,'error'); return; }
+  const item = S.packItems.find(i => i.id === id);
+  if (item) { item.checked = checked; item.checked_by = checked ? S.user.id : null; }
+  renderPackTab();
+}
+
+async function deletePackItem(id) {
+  const { error } = await sb.from('pack_items').delete().eq('id', id);
+  if (error) { toast(error.message,'error'); return; }
+  S.packItems = S.packItems.filter(i => i.id !== id);
+  renderPackTab();
+}
+
+// ================================================================
+// SIGHTS
+// ================================================================
+async function loadSights() {
+  const { data } = await sb.from('sights').select('*').eq('trip_id', S.trip.id).order('updated_at');
+  S.sights = data || [];
+  renderSights();
+}
+
+function renderSights() {
+  const el = document.getElementById('sights-list');
+  if (!S.sights.length) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte hinzugefügt.</p></div>`; return; }
+  const active = S.sights.filter(s => !s.visited);
+  const visited = S.sights.filter(s => s.visited);
+  let html = '';
+  if (active.length) {
+    html += `<div class="card">${active.map(s => sightRow(s)).join('')}</div>`;
+  }
+  if (visited.length) {
+    html += `<div class="section-title">✅ Besucht</div><div class="card">${visited.map(s => sightRow(s)).join('')}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function sightRow(s) {
+  const member = S.members.find(m => m.user_id === s.visited_by);
+  const by = s.visited && s.visited_by ? (member?.display_name || '') : '';
+  return `<div class="sight-item${s.visited?' visited':''}" id="si-${s.id}">
+    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited?'✓':''}</div>
+    <div class="sight-info">
+      <div class="sight-name">${esc(s.name)}</div>
+      ${s.note?`<div class="sight-note">${esc(s.note)}</div>`:''}
+      ${by?`<div class="sight-by">Besucht von ${esc(by)}</div>`:''}
+    </div>
+    <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
+  </div>`;
+}
+
+async function addSight() {
+  const name = v('sight-name');
+  if (!name) { toast('Bitte Namen eingeben','error'); return; }
+  const note = v('sight-note');
+  const { data, error } = await sb.from('sights').insert({ trip_id: S.trip.id, name, note }).select().single();
+  if (error) { toast(error.message,'error'); return; }
+  S.sights.push(data);
+  set('sight-name',''); set('sight-note','');
+  renderSights();
+}
+
+async function toggleSight(id, visited) {
+  const { error } = await sb.from('sights').update({ visited, visited_by: visited ? S.user.id : null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast(error.message,'error'); return; }
+  const s = S.sights.find(x => x.id === id);
+  if (s) { s.visited = visited; s.visited_by = visited ? S.user.id : null; }
+  renderSights();
+}
+
+async function deleteSight(id) {
+  const { error } = await sb.from('sights').delete().eq('id', id);
+  if (error) { toast(error.message,'error'); return; }
+  S.sights = S.sights.filter(x => x.id !== id);
+  renderSights();
+}
+
+// ================================================================
+// WEATHER
+// ================================================================
+async function loadWeatherCity() {
+  const { data } = await sb.from('weather_city').select('*').eq('trip_id', S.trip.id).maybeSingle();
+  if (data?.city_name) {
+    set('weather-city', data.city_name);
+    await fetchWeather(data.city_name);
+  }
+}
+
+async function loadWeather() {
+  const city = v('weather-city');
+  if (!city) { toast('Bitte Stadtname eingeben','error'); return; }
+  await sb.from('weather_city').upsert({ trip_id: S.trip.id, city_name: city }, { onConflict: 'trip_id' });
+  await fetchWeather(city);
+}
+
+async function fetchWeather(city) {
+  const el = document.getElementById('weather-display');
+  el.innerHTML = `<div class="card"><div class="empty-state"><div class="spinner" style="margin:0 auto;border-color:var(--green);border-top-color:transparent;"></div></div></div>`;
+  try {
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de`);
+    const geoData = await geoRes.json();
+    if (!geoData.results?.length) { el.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">🔍</div><p>Stadt nicht gefunden.</p></div></div>`; return; }
+    const { latitude, longitude, name, country } = geoData.results[0];
+    const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=6`);
+    const wx = await wxRes.json();
+    const cur = wx.current;
+    const daily = wx.daily;
+    const [emoji, desc] = WMO[cur.weathercode] || ['🌡️','Unbekannt'];
+    const temp = Math.round(cur.temperature_2m);
+    const days = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+    let forecastHtml = daily.time.slice(1,6).map((d,i) => {
+      const [de] = WMO[daily.weathercode[i+1]] || ['🌡️'];
+      const max = Math.round(daily.temperature_2m_max[i+1]);
+      const min = Math.round(daily.temperature_2m_min[i+1]);
+      const dow = days[new Date(d).getDay()];
+      return `<div class="forecast-day"><div class="fc-day">${dow}</div><div class="fc-emoji">${de}</div><div class="fc-max">${max}°</div><div class="fc-min">${min}°</div></div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="weather-current">
+        <div class="weather-emoji">${emoji}</div>
+        <div class="weather-temp">${temp}°C</div>
+        <div class="weather-desc">${desc}</div>
+        <div class="weather-city-name">📍 ${name}, ${country}</div>
+      </div>
+      <div class="section-title">5-Tage-Vorschau</div>
+      <div class="forecast-row">${forecastHtml}</div>`;
+  } catch(e) { el.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">⚠️</div><p>Wetterdaten konnten nicht geladen werden.</p></div></div>`; }
+}
+
+// ================================================================
+// BUDGET
+// ================================================================
+async function loadBudget() {
+  const [{ data: items }, { data: limit }] = await Promise.all([
+    sb.from('budget_items').select('*').eq('trip_id', S.trip.id).order('created_at'),
+    sb.from('budget_limit').select('*').eq('trip_id', S.trip.id).maybeSingle(),
+  ]);
+  S.budgetItems = items || [];
+  S.budgetLimit = limit?.amount || 0;
+  if (S.budgetLimit) set('budget-limit-input', S.budgetLimit);
+  renderBudget();
+}
+
+function renderBudget() {
+  const total = S.budgetItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
+  const pct = S.budgetLimit > 0 ? Math.min(100, Math.round(total/S.budgetLimit*100)) : 0;
+  const over = S.budgetLimit > 0 && total > S.budgetLimit;
+  document.getElementById('budget-overview').innerHTML = `
+    <div class="budget-total">
+      <div class="budget-amount">${total.toFixed(2)} €</div>
+      <div class="budget-sub">${S.budgetLimit>0?`von ${S.budgetLimit.toFixed(2)} € Budget · ${pct}% verplant`:'Kein Budget-Limit gesetzt'}</div>
+      ${S.budgetLimit>0?`<div class="progress-wrap" style="margin-top:12px;background:rgba(255,255,255,0.2)"><div class="progress-bar" style="width:${pct}%;background:${over?'#EF4444':'#fff'}"></div></div>`:''}
+      ${over?`<div style="font-size:12px;color:#FCA5A5;margin-top:6px;">⚠️ Budget überschritten!</div>`:''}
+    </div>`;
+  const listEl = document.getElementById('budget-items-list');
+  if (!S.budgetItems.length) { listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">💸</div><p>Noch keine Ausgaben eingetragen.</p></div>`; return; }
+  listEl.innerHTML = S.budgetItems.map(item => {
+    const member = S.members.find(m => m.user_id === item.created_by);
+    const by = member?.display_name || '';
+    return `<div class="budget-item-row">
+      <span class="budget-cat-badge">${esc(item.category)}</span>
+      <span class="budget-desc">${esc(item.description||'')}</span>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="budget-amount-cell">${parseFloat(item.amount).toFixed(2)} €</div>
+        ${by?`<div class="budget-by">${esc(by)}</div>`:''}
+      </div>
+      <button class="item-del" onclick="deleteBudgetItem('${item.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function addBudgetItem() {
+  const category = v('budget-cat');
+  const description = v('budget-desc');
+  const amount = parseFloat(v('budget-amount'));
+  if (!amount || isNaN(amount)) { toast('Bitte Betrag eingeben','error'); return; }
+  const { data, error } = await sb.from('budget_items').insert({ trip_id: S.trip.id, category, description, amount, created_by: S.user.id }).select().single();
+  if (error) { toast(error.message,'error'); return; }
+  S.budgetItems.push(data);
+  set('budget-desc',''); set('budget-amount','');
+  renderBudget();
+  toast('Ausgabe hinzugefügt ✓','success');
+}
+
+async function deleteBudgetItem(id) {
+  const { error } = await sb.from('budget_items').delete().eq('id', id);
+  if (error) { toast(error.message,'error'); return; }
+  S.budgetItems = S.budgetItems.filter(i => i.id !== id);
+  renderBudget();
+}
+
+async function saveBudgetLimit() {
+  const amount = parseFloat(v('budget-limit-input'));
+  if (isNaN(amount)) { toast('Bitte gültigen Betrag eingeben','error'); return; }
+  const { error } = await sb.from('budget_limit').upsert({ trip_id: S.trip.id, amount }, { onConflict: 'trip_id' });
+  if (error) { toast(error.message,'error'); return; }
+  S.budgetLimit = amount;
+  renderBudget();
+  toast('Budget-Limit gesetzt ✓','success');
+}
+
+// ================================================================
+// NOTES
+// ================================================================
+let notesTimer = null;
+async function loadNotes() {
+  const { data } = await sb.from('notes').select('*').eq('trip_id', S.trip.id).maybeSingle();
+  S.notes = data;
+  if (data) { set('notes-content', data.content); renderNotesMeta(); }
+}
+
+function onNotesInput() {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(saveNotes, 1000);
+}
+
+async function saveNotes() {
+  const content = v('notes-content');
+  const { error } = await sb.from('notes').upsert({ trip_id: S.trip.id, content, updated_by: S.user.id, updated_at: new Date().toISOString() }, { onConflict: 'trip_id' });
+  if (error) { toast(error.message,'error'); return; }
+  if (!S.notes) S.notes = {};
+  S.notes.content = content;
+  S.notes.updated_by = S.user.id;
+  S.notes.updated_at = new Date().toISOString();
+  renderNotesMeta();
+}
+
+function renderNotesMeta() {
+  const el = document.getElementById('notes-meta');
+  if (!S.notes?.updated_at) { el.textContent = ''; return; }
+  const member = S.members.find(m => m.user_id === S.notes.updated_by);
+  const who = member?.display_name || 'du';
+  const when = new Date(S.notes.updated_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  el.textContent = `Zuletzt bearbeitet von ${who} · ${when}`;
+}
+
+function renderTips() {
+  document.getElementById('tips-list').innerHTML = TIPS.map(t => `
+    <div class="tip-card">
+      <div class="tip-icon">${t.icon}</div>
+      <div><div class="tip-title">${t.title}</div><div class="tip-text">${t.text}</div></div>
+    </div>`).join('');
+}
+
+// ================================================================
+// EMERGENCY
+// ================================================================
+let emTimer = null;
+async function loadEmergency() {
+  const { data } = await sb.from('emergency_info').select('*').eq('trip_id', S.trip.id).maybeSingle();
+  S.emergency = data;
+  if (data) {
+    set('em-insurance', data.insurance);
+    set('em-ins-num', data.insurance_number);
+    set('em-blood', data.blood_type);
+    set('em-allergies', data.allergies);
+    set('em-contact-name', data.emergency_contact_name);
+    set('em-contact-num', data.emergency_contact_number);
+    set('em-country', data.country_numbers);
+  }
+}
+
+async function saveEmergency() {
+  const row = {
+    trip_id: S.trip.id,
+    insurance: v('em-insurance'), insurance_number: v('em-ins-num'),
+    blood_type: v('em-blood'), allergies: v('em-allergies'),
+    emergency_contact_name: v('em-contact-name'), emergency_contact_number: v('em-contact-num'),
+    country_numbers: v('em-country'),
+  };
+  const { error } = await sb.from('emergency_info').upsert(row, { onConflict: 'trip_id' });
+  if (error) { toast(error.message,'error'); return; }
+  toast('Notfalldaten gespeichert ✓','success');
+}
+
+function debounceEmergency() {
+  clearTimeout(emTimer);
+  emTimer = setTimeout(() => {
+    const row = { trip_id: S.trip.id, country_numbers: v('em-country') };
+    sb.from('emergency_info').upsert(row, { onConflict: 'trip_id' });
+  }, 1500);
+}
+
+// ================================================================
+// REALTIME
+// ================================================================
+async function setupRealtime() {
+  if (!S.trip) return;
+  if (S.realtimeChannel) await sb.removeChannel(S.realtimeChannel);
+  const ch = sb.channel(`trip-${S.trip.id}`, { config: { presence: { key: S.user.id } } });
+
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'pack_items', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    handlePackItemRT(p);
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'pack_lists', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    handlePackListRT(p);
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'sights', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    handleSightRT(p);
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_items', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    handleBudgetRT(p);
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_limit', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    if (p.new) { S.budgetLimit = p.new.amount; renderBudget(); }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    if (p.new && p.new.updated_by !== S.user.id) {
+      S.notes = p.new;
+      set('notes-content', p.new.content);
+      renderNotesMeta();
+      toast('📝 Notizen aktualisiert','');
+    }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${S.trip.id}` }, p => {
+    if (p.new) {
+      S.trip = { ...S.trip, ...p.new };
+      fillTripForm();
+      updateCountdown();
+      document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+    }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'flights', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    if (p.new) {
+      S.flights[p.new.direction] = p.new;
+      renderBoarding(p.new.direction);
+      fillFlightForm(p.new.direction);
+    }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${S.trip.id}` }, () => {
+    loadMembers();
+  });
+
+  ch.on('presence', { event: 'sync' }, () => {
+    const state = ch.presenceState();
+    S.onlineUsers = Object.values(state).flat();
+    updatePresenceDisplay();
+  });
+
+  ch.subscribe(async (status) => {
+    if (status === 'SUBSCRIBED') {
+      const member = S.members.find(m => m.user_id === S.user.id);
+      await ch.track({ user_id: S.user.id, email: S.user.email, display_name: member?.display_name || '' });
+    }
+  });
+
+  S.realtimeChannel = ch;
+}
+
+function handlePackItemRT(p) {
+  if (p.eventType === 'INSERT') {
+    if (!S.packItems.find(i => i.id === p.new.id)) S.packItems.push(p.new);
+  } else if (p.eventType === 'UPDATE') {
+    const idx = S.packItems.findIndex(i => i.id === p.new.id);
+    if (idx >= 0) S.packItems[idx] = p.new; else S.packItems.push(p.new);
+    if (p.new.updated_by !== S.user.id) flashEl(`pi-${p.new.id}`);
+  } else if (p.eventType === 'DELETE') {
+    S.packItems = S.packItems.filter(i => i.id !== p.old?.id);
+  }
+  renderPackTab();
+}
+
+function handlePackListRT(p) {
+  if (p.eventType === 'INSERT') {
+    if (!S.packLists.find(l => l.id === p.new.id)) S.packLists.push(p.new);
+  } else if (p.eventType === 'UPDATE') {
+    const idx = S.packLists.findIndex(l => l.id === p.new.id);
+    if (idx >= 0) S.packLists[idx] = p.new;
+  } else if (p.eventType === 'DELETE') {
+    S.packLists = S.packLists.filter(l => l.id !== p.old?.id);
+    if (S.activePackListId === p.old?.id) S.activePackListId = S.packLists[0]?.id || null;
+  }
+  renderPackTab();
+}
+
+function handleSightRT(p) {
+  if (p.eventType === 'INSERT') {
+    if (!S.sights.find(s => s.id === p.new.id)) S.sights.push(p.new);
+  } else if (p.eventType === 'UPDATE') {
+    const idx = S.sights.findIndex(s => s.id === p.new.id);
+    if (idx >= 0) { S.sights[idx] = p.new; if (p.new.visited_by !== S.user.id) flashEl(`si-${p.new.id}`); }
+    else S.sights.push(p.new);
+  } else if (p.eventType === 'DELETE') {
+    S.sights = S.sights.filter(s => s.id !== p.old?.id);
+  }
+  renderSights();
+}
+
+function handleBudgetRT(p) {
+  if (p.eventType === 'INSERT') {
+    if (!S.budgetItems.find(i => i.id === p.new.id)) S.budgetItems.push(p.new);
+  } else if (p.eventType === 'DELETE') {
+    S.budgetItems = S.budgetItems.filter(i => i.id !== p.old?.id);
+  }
+  renderBudget();
+}
+
+function flashEl(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 800);
+}
+
+// ================================================================
+// UI HELPERS
+// ================================================================
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById(`tab-${name}`)?.classList.add('active');
+  document.querySelector(`[data-tab="${name}"]`)?.classList.add('active');
+  document.getElementById('tab-container').scrollTop = 0;
+}
+
+let spinnerCount = 0;
+function showSpinner() {
+  spinnerCount++;
+  let el = document.getElementById('spinner-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'spinner-overlay';
+    el.className = 'spinner-overlay';
+    el.innerHTML = '<div class="spinner"></div>';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+function hideSpinner() {
+  spinnerCount = Math.max(0, spinnerCount - 1);
+  if (spinnerCount === 0) {
+    const el = document.getElementById('spinner-overlay');
+    if (el) el.style.display = 'none';
+  }
+}
+
+function toast(msg, type = '') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast${type?' '+type:''}`;
+  const icons = { success: '✓', error: '✕', '': 'ℹ️' };
+  el.innerHTML = `<span>${icons[type]||'ℹ️'}</span> ${esc(msg)}`;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+function v(id) { return document.getElementById(id)?.value?.trim() || ''; }
+function set(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function emailToName(email) { return (email||'').split('@')[0] || 'Unbekannt'; }
+function getInitials(name) { return (name||'?').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase() || '?'; }
+function stringColor(str) {
+  const colors = ['#1D9E75','#3B82F6','#8B5CF6','#F59E0B','#EF4444','#06B6D4','#EC4899','#84CC16'];
+  let hash = 0;
+  for (const c of (str||'')) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+// ================================================================
+// START
+// ================================================================
+init();
+</script>
+</body>
+</html>
