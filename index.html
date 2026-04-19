@@ -213,38 +213,39 @@ ALTER PUBLICATION supabase_realtime ADD TABLE trip_members;
   --green: #1D9E75;
   --green-light: #E8F7F2;
   --green-dark: #156B50;
-  --bg: #F0F4F2;
+  --bg: #ECF2EF;
   --card: #FFFFFF;
   --text: #1A1A2E;
   --text-2: #6B7280;
-  --border: #E5E7EB;
+  --border: #DCE5E1;
   --red: #EF4444;
   --amber: #F59E0B;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
-  --shadow: 0 2px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 4px 24px rgba(0,0,0,0.12);
+  --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 16px 36px rgba(16, 24, 40, 0.12);
   --nav-h: 72px;
   --header-h: 56px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:var(--text);}
+html,body{height:100%;overflow:hidden;background:radial-gradient(circle at 20% -10%, #f7fbf9 0%, var(--bg) 55%);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:var(--text);}
 input,textarea,select,button{font-family:inherit;font-size:inherit;}
 button{cursor:pointer;border:none;background:none;}
 
 /* ── Scrolling ── */
 #app{display:flex;flex-direction:column;height:100%;overflow:hidden;}
 #tab-container{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:calc(var(--nav-h) + var(--safe-bottom));}
-.tab-content{display:none;padding:12px 16px 24px;}
+.tab-content{display:none;padding:14px 16px 28px;}
 .tab-content.active{display:block;}
 
 /* ── Header ── */
 #app-header{
   height:var(--header-h);
-  background:var(--card);
+  background:rgba(255,255,255,0.9);
+  backdrop-filter:blur(8px);
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;
   padding:0 16px;
@@ -269,7 +270,7 @@ button{cursor:pointer;border:none;background:none;}
   background:#22C55E;border:1.5px solid #fff;
 }
 .btn-logout{
-  background:var(--bg);border:1px solid var(--border);
+  background:#fff;border:1px solid var(--border);
   color:var(--text-2);font-size:13px;font-weight:600;
   padding:6px 12px;border-radius:var(--radius-sm);
   white-space:nowrap;
@@ -279,7 +280,8 @@ button{cursor:pointer;border:none;background:none;}
 #bottom-nav{
   position:fixed;bottom:0;left:0;right:0;
   height:calc(var(--nav-h) + var(--safe-bottom));
-  background:var(--card);
+  background:rgba(255,255,255,0.95);
+  backdrop-filter:blur(10px);
   border-top:1px solid var(--border);
   display:flex;overflow-x:auto;
   -webkit-overflow-scrolling:touch;
@@ -301,6 +303,7 @@ button{cursor:pointer;border:none;background:none;}
 
 /* ── Cards ── */
 .card{background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:16px;margin-bottom:12px;}
+.card{border:1px solid rgba(255,255,255,0.85);}
 .card-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .card-title .icon{font-size:18px;}
 
@@ -311,10 +314,10 @@ button{cursor:pointer;border:none;background:none;}
   width:100%;padding:12px 14px;
   border:1.5px solid var(--border);border-radius:var(--radius-md);
   background:#fff;color:var(--text);font-size:15px;
-  transition:border-color .2s;outline:none;
+  transition:border-color .2s, box-shadow .2s, transform .15s;outline:none;
   min-height:44px;
 }
-.form-input:focus{border-color:var(--green);}
+.form-input:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(29, 158, 117, 0.14);}
 .form-input::placeholder{color:#9CA3AF;}
 textarea.form-input{resize:vertical;min-height:100px;line-height:1.5;}
 select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;}
@@ -325,13 +328,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
   padding:12px 18px;border-radius:var(--radius-md);
   font-size:15px;font-weight:600;
-  transition:all .2s;min-height:44px;border:none;cursor:pointer;
+  transition:transform .15s, box-shadow .2s, filter .2s;min-height:44px;border:none;cursor:pointer;
 }
-.btn-primary{background:var(--green);color:#fff;}
+.btn-primary{background:linear-gradient(135deg, #23b184, var(--green-dark));color:#fff;box-shadow:0 8px 18px rgba(29, 158, 117, 0.28);}
 .btn-primary:active{background:var(--green-dark);}
-.btn-secondary{background:var(--green-light);color:var(--green-dark);}
+.btn-secondary{background:#f3faf7;color:var(--green-dark);border:1px solid #cde9de;}
 .btn-secondary:active{opacity:0.8;}
 .btn-danger{background:#FEE2E2;color:var(--red);}
+.btn:active{transform:translateY(1px);}
 .btn-sm{padding:8px 12px;font-size:13px;min-height:36px;}
 .btn-icon{width:36px;height:36px;padding:0;border-radius:var(--radius-sm);}
 .btn-full{width:100%;}
@@ -460,6 +464,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   text-align:center;
   background:linear-gradient(135deg,var(--green),var(--green-dark));
   border-radius:var(--radius-xl);color:#fff;padding:28px 20px;margin-bottom:12px;
+  box-shadow:var(--shadow);
 }
 .weather-emoji{font-size:64px;line-height:1;margin-bottom:8px;}
 .weather-temp{font-size:52px;font-weight:800;line-height:1;}
@@ -541,12 +546,23 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   background:#22C55E;border:1.5px solid var(--card);
 }
 .member-name{font-size:13px;font-weight:600;}
+.member-meta{font-size:11px;color:var(--text-2);}
+.member-remove{
+  margin-left:auto;
+  width:30px;height:30px;
+  border-radius:9999px;
+  border:1px solid #fecaca;
+  background:#fff1f2;
+  color:#b91c1c;
+  font-size:16px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
 
 /* ── Invite Code ── */
 .invite-code-display{
   font-size:36px;font-weight:800;letter-spacing:8px;
   color:var(--green);text-align:center;
-  background:var(--green-light);border-radius:var(--radius-lg);
+  background:linear-gradient(180deg,#f4fcf8,var(--green-light));border-radius:var(--radius-lg);
   padding:20px;margin:12px 0;
 }
 
@@ -631,6 +647,19 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .info-label{font-size:13px;color:var(--text-2);}
 .info-value{font-size:14px;font-weight:600;text-align:right;}
 .hidden{display:none!important;}
+
+/* ── Responsive Polish ── */
+@media (max-width: 640px){
+  .tab-content{padding:12px 12px 24px;}
+  .card{padding:14px;border-radius:14px;}
+  .form-row{grid-template-columns:1fr;}
+  .bp-code{font-size:30px;}
+  .countdown-number{font-size:58px;}
+  .invite-code-display{font-size:30px;letter-spacing:6px;padding:16px;}
+  #app-header{padding:0 12px;}
+  #app-header .trip-name{font-size:16px;}
+  .btn-logout{padding:6px 10px;font-size:12px;}
+}
 </style>
 </head>
 <body>
@@ -1305,14 +1334,38 @@ async function loadMembers() {
 function renderMembers() {
   const el = document.getElementById('members-list');
   if (!S.members.length) { el.innerHTML = '<p style="color:var(--text-2);font-size:14px;">Noch keine Mitreisenden</p>'; return; }
+  const me = S.members.find(m => m.user_id === S.user.id);
+  const isCurrentOwner = me?.role === 'owner';
   el.innerHTML = S.members.map(m => {
     const isOnline = S.onlineUsers.some(u => u.user_id === m.user_id);
     const initials = getInitials(m.display_name || m.user_id);
+    const canRemove = isCurrentOwner && m.role !== 'owner' && m.user_id !== S.user.id;
     return `<div class="member-card">
       <div class="member-avatar" style="background:${stringColor(m.user_id)}">${initials}${isOnline?'<span class="online-dot"></span>':''}</div>
-      <div><div class="member-name">${esc(m.display_name || 'Unbekannt')}</div><div style="font-size:11px;color:var(--text-2)">${m.role==='owner'?'👑 Ersteller':'Mitglied'}</div></div>
+      <div><div class="member-name">${esc(m.display_name || 'Unbekannt')}</div><div class="member-meta">${m.role==='owner'?'👑 Ersteller':'Mitglied'}</div></div>
+      ${canRemove ? `<button class="member-remove" title="Mitglied entfernen" onclick="removeMember('${m.user_id}')">×</button>` : ''}
     </div>`;
   }).join('');
+}
+
+async function removeMember(userId) {
+  const member = S.members.find(m => m.user_id === userId);
+  const me = S.members.find(m => m.user_id === S.user.id);
+  if (!member || !me) return;
+  if (me.role !== 'owner') { toast('Nur der Ersteller kann Mitglieder entfernen','error'); return; }
+  if (member.role === 'owner') { toast('Der Ersteller kann nicht entfernt werden','error'); return; }
+  const name = member.display_name || 'dieses Mitglied';
+  if (!confirm(`${name} wirklich aus der Reise entfernen?`)) return;
+
+  showSpinner();
+  const { error } = await sb.from('trip_members').delete().eq('trip_id', S.trip.id).eq('user_id', userId);
+  hideSpinner();
+  if (error) { toast('Entfernen nicht möglich: ' + error.message, 'error'); return; }
+
+  S.members = S.members.filter(m => m.user_id !== userId);
+  renderMembers();
+  updatePresenceDisplay();
+  toast('Mitglied entfernt','success');
 }
 
 function updatePresenceDisplay() {
