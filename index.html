@@ -322,6 +322,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE attachments;
 ================================================================
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <style>
 :root {
   --green: #1D9E75;
@@ -344,6 +345,58 @@ ALTER PUBLICATION supabase_realtime ADD TABLE attachments;
   --header-h: 56px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+:root[data-theme="dark"] {
+  --green: #3ecf9a;
+  --green-light: #14322a;
+  --green-dark: #269e72;
+  --bg: #0d1210;
+  --card: #161c19;
+  --text: #e8eee9;
+  --text-2: #94a39b;
+  --border: #2a3530;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] body{
+  background: radial-gradient(circle at 20% -10%, #1a2822 0%, var(--bg) 55%);
+}
+:root[data-theme="dark"] #app-header{
+  background: rgba(22, 28, 25, 0.94);
+  border-bottom-color: var(--border);
+}
+:root[data-theme="dark"] .btn-logout{
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+:root[data-theme="dark"] #bottom-nav{
+  background: rgba(22, 28, 25, 0.96);
+  border-top-color: var(--border);
+}
+:root[data-theme="dark"] .form-input{
+  background: #0f1613;
+  color: var(--text);
+  border-color: var(--border);
+}
+:root[data-theme="dark"] .card{
+  border-color: var(--border);
+}
+:root[data-theme="dark"] .invite-code-display{
+  background: linear-gradient(180deg,#1a2520,var(--green-light));
+}
+:root[data-theme="dark"] #login-screen,
+:root[data-theme="dark"] #trip-setup-screen{
+  background: linear-gradient(160deg,#062a22,#156B50,#134032);
+}
+:root[data-theme="dark"] .login-card{
+  background: var(--card);
+  color: var(--text);
+}
+:root[data-theme="dark"] .login-card .form-label{color:var(--text-2);}
+:root[data-theme="dark"] .toast{background:#252e2a;}
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;background:radial-gradient(circle at 20% -10%, #f7fbf9 0%, var(--bg) 55%);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:var(--text);}
 input,textarea,select,button{font-family:inherit;font-size:inherit;}
@@ -388,6 +441,43 @@ button{cursor:pointer;border:none;background:none;}
   color:var(--text-2);font-size:13px;font-weight:600;
   padding:6px 12px;border-radius:var(--radius-sm);
   white-space:nowrap;
+}
+.btn-header-icon{
+  width:40px;height:40px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--card);
+  font-size:18px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;line-height:1;
+}
+
+.invite-url-box{
+  font-size:12px;color:var(--text-2);margin-bottom:10px;line-height:1.45;
+  word-break:break-all;padding:10px 12px;background:rgba(29,158,117,0.06);
+  border-radius:var(--radius-md);border:1px dashed rgba(29,158,117,0.35);
+}
+.invite-url-box code{font-size:11px;color:var(--text);font-family:ui-monospace,monospace;}
+.invite-share-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin-bottom:12px;}
+.invite-qr-wrap{
+  flex-shrink:0;width:176px;height:176px;display:flex;align-items:center;justify-content:center;
+  background:#fff;border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;
+}
+.invite-qr-wrap canvas{display:block;max-width:100%;height:auto;}
+.invite-share-actions{display:flex;flex-direction:column;gap:8px;flex:1;min-width:140px;}
+
+.settings-overlay{
+  position:fixed;inset:0;background:rgba(15,20,18,0.55);z-index:9000;
+  display:flex;align-items:flex-end;justify-content:center;padding:16px;
+  backdrop-filter:blur(4px);
+}
+.settings-sheet{
+  width:100%;max-width:400px;background:var(--card);border-radius:var(--radius-xl);
+  padding:20px;border:1px solid var(--border);box-shadow:var(--shadow-lg);
+  margin-bottom:max(12px, env(safe-area-inset-bottom));
+}
+.settings-sheet-title{font-size:17px;font-weight:800;margin-bottom:14px;color:var(--text);}
+.settings-sheet .form-label{margin-bottom:8px;}
+@media (max-width: 480px){
+  .invite-share-row{flex-direction:column;align-items:stretch;}
+  .invite-qr-wrap{align-self:center;}
 }
 
 /* ── Bottom Nav ── */
@@ -984,6 +1074,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <div class="trip-name" id="header-trip-name">Urlaubsplaner</div>
     <div class="header-right">
       <div class="online-avatars" id="online-avatars"></div>
+      <button type="button" class="btn-header-icon" onclick="openSettings()" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
       <button class="btn-logout" onclick="logout()">Logout</button>
     </div>
   </header>
@@ -1027,6 +1118,15 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <p style="font-size:13px;color:var(--text-2);margin-bottom:8px;">Lade andere zur Reise ein:</p>
         <div id="invite-code-display" class="invite-code-display">------</div>
         <button class="btn btn-secondary btn-full" onclick="copyInviteCode()" style="margin-bottom:12px">📋 Code kopieren</button>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:6px;">Link mit Einladungscode (zum Teilen oder QR):</p>
+        <div id="invite-url-box" class="invite-url-box hidden"><code id="invite-url-text"></code></div>
+        <div class="invite-share-row">
+          <div id="invite-qr-wrap" class="invite-qr-wrap" aria-hidden="true"></div>
+          <div class="invite-share-actions">
+            <button type="button" class="btn btn-primary btn-full" onclick="shareInviteLink()">📤 Link teilen</button>
+            <button type="button" class="btn btn-secondary btn-full" onclick="copyInviteLink()">🔗 Link kopieren</button>
+          </div>
+        </div>
         <hr class="divider">
         <p style="font-size:13px;color:var(--text-2);margin-bottom:8px;">Oder tritt bei:</p>
         <div class="input-row">
@@ -1285,6 +1385,21 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   </nav>
 </div><!-- /app -->
 
+<div id="settings-overlay" class="settings-overlay hidden" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-sheet" role="dialog" aria-labelledby="settings-title" onclick="event.stopPropagation()">
+    <div id="settings-title" class="settings-sheet-title">Einstellungen</div>
+    <div class="form-group">
+      <label class="form-label" for="theme-select">Erscheinungsbild</label>
+      <select id="theme-select" class="form-input" onchange="setThemePreference(this.value)">
+        <option value="system">Wie System</option>
+        <option value="light">Hell</option>
+        <option value="dark">Dunkel</option>
+      </select>
+    </div>
+    <button type="button" class="btn btn-primary btn-full" onclick="closeSettings()">Schließen</button>
+  </div>
+</div>
+
 <script>
 // ================================================================
 // CONFIGURATION — Enter your Supabase credentials here
@@ -1292,6 +1407,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 const SUPABASE_URL = 'https://gtznxajjpsdwocorgoon.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0em54YWpqcHNkd29jb3Jnb29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NDg4NTMsImV4cCI6MjA5MjEyNDg1M30._o9O9tvaOmuhI03tFf4iCQIReL_56HHqs5DyUHwMK7E';
 const ATTACHMENTS_BUCKET = 'trip-attachments';
+const THEME_STORAGE_KEY = 'urlaubsapp_theme';
 
 // ================================================================
 // CONSTANTS
@@ -1380,6 +1496,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // INIT
 // ================================================================
 async function init() {
+  applyTheme();
+  applyJoinFromUrl();
   renderTips();
   const recoveryMode = isRecoveryMode();
   const { data: { session } } = await sb.auth.getSession();
@@ -1410,6 +1528,11 @@ async function init() {
   });
   window.addEventListener('online', () => { const el = document.getElementById('offline-banner-inner'); if (el) el.style.display = 'none'; });
   window.addEventListener('offline', () => { const el = document.getElementById('offline-banner-inner'); if (el) el.style.display = 'block'; });
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (getStoredThemePreference() === 'system') applyTheme();
+    });
+  } catch (_) {}
 }
 
 async function afterLogin() {
@@ -1523,7 +1646,7 @@ async function loadAllData() {
   if (!S.trip) return;
   resetTripScopedState();
   document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
-  document.getElementById('invite-code-display').textContent = S.trip.invite_code || '------';
+  updateInviteUi();
   fillTripForm();
   await Promise.all([
     loadMembers(),
@@ -1895,6 +2018,150 @@ function fillTripForm() {
   set('t-addr', S.trip.hotel_address);
   set('t-dep', S.trip.departure_date || '');
   set('t-ret', S.trip.return_date || '');
+}
+
+function getStoredThemePreference() {
+  try { return localStorage.getItem(THEME_STORAGE_KEY) || 'system'; } catch { return 'system'; }
+}
+
+function resolveDarkMode() {
+  const pref = getStoredThemePreference();
+  if (pref === 'dark') return true;
+  if (pref === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function applyTheme() {
+  const dark = resolveDarkMode();
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.value = getStoredThemePreference();
+  void refreshInviteSharing();
+}
+
+function setThemePreference(val) {
+  try { localStorage.setItem(THEME_STORAGE_KEY, val); } catch (_) {}
+  applyTheme();
+}
+
+function openSettings() {
+  const ov = document.getElementById('settings-overlay');
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.value = getStoredThemePreference();
+  if (ov) ov.classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay')?.classList.add('hidden');
+}
+
+function getInviteJoinUrl() {
+  const code = S.trip?.invite_code;
+  if (!code) return '';
+  try {
+    const u = new URL(window.location.href);
+    u.hash = '';
+    u.searchParams.delete('join');
+    u.searchParams.set('join', code);
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+function applyJoinFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    let raw = u.searchParams.get('join');
+    if (!raw && u.hash && u.hash.includes('join=')) {
+      const hp = new URLSearchParams(u.hash.replace(/^#/, ''));
+      raw = hp.get('join');
+    }
+    if (!raw) return;
+    const code = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    if (code.length !== 6) return;
+    set('setup-invite-code', code);
+    set('trip-invite-code-inline', code);
+    const jc = document.getElementById('join-code');
+    if (jc) jc.value = code;
+    u.searchParams.delete('join');
+    let newHash = u.hash;
+    if (newHash && newHash.includes('join=')) {
+      const hp = new URLSearchParams(newHash.replace(/^#/, ''));
+      hp.delete('join');
+      const rest = hp.toString();
+      newHash = rest ? `#${rest}` : '';
+    }
+    const clean = u.pathname + (u.search ? u.search : '') + newHash;
+    history.replaceState({}, '', clean || u.pathname);
+  } catch (_) {}
+}
+
+function updateInviteUi() {
+  const disp = document.getElementById('invite-code-display');
+  if (disp) disp.textContent = S.trip?.invite_code || '------';
+  void refreshInviteSharing();
+}
+
+function refreshInviteSharing() {
+  const wrap = document.getElementById('invite-qr-wrap');
+  const urlBox = document.getElementById('invite-url-box');
+  const urlText = document.getElementById('invite-url-text');
+  if (!wrap) return;
+  const url = getInviteJoinUrl();
+  const code = S.trip?.invite_code;
+  wrap.innerHTML = '';
+  if (!code || !url) {
+    if (urlBox) urlBox.classList.add('hidden');
+    return;
+  }
+  if (urlText) urlText.textContent = url;
+  if (urlBox) urlBox.classList.remove('hidden');
+  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
+    wrap.innerHTML = '<span style="font-size:12px;color:var(--text-2);padding:8px;text-align:center;">QR-Bibliothek lädt nicht.</span>';
+    return;
+  }
+  const canvas = document.createElement('canvas');
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  QRCode.toCanvas(canvas, url, {
+    width: 168,
+    margin: 1,
+    color: { dark: dark ? '#e8eee9' : '#1A1A2E', light: dark ? '#161c19' : '#ffffff' },
+  }, err => {
+    if (err) {
+      wrap.innerHTML = `<span style="font-size:12px;color:var(--text-2);padding:8px;">QR fehlgeschlagen</span>`;
+      return;
+    }
+    wrap.appendChild(canvas);
+  });
+}
+
+async function shareInviteLink() {
+  const url = getInviteJoinUrl();
+  const code = S.trip?.invite_code;
+  const title = S.trip?.name || 'Reise';
+  if (!url || !code) { toast('Kein Einladungscode geladen', 'error'); return; }
+  const text = `Tritt bei „${title}“ im Urlaubsplaner bei. Code: ${code}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Einladung zur Reise', text, url });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    toast('Einladung in die Zwischenablage kopiert 📋', 'success');
+  } catch {
+    toast('Teilen nicht möglich', 'error');
+  }
+}
+
+function copyInviteLink() {
+  const url = getInviteJoinUrl();
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => toast('Link kopiert 📋', 'success')).catch(() => toast('Kopieren fehlgeschlagen', 'error'));
 }
 
 function copyInviteCode() {
@@ -3344,6 +3611,7 @@ async function setupRealtime() {
       fillTripForm();
       updateCountdown();
       document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+      updateInviteUi();
       if (p.eventType === 'UPDATE') notifyCollaborationUpdate('Mitgespeichert: Reisedaten wurden aktualisiert.');
     }
   });
