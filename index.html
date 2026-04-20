@@ -24,6 +24,7 @@ CREATE TABLE trips (
   return_date DATE,
   invite_code TEXT UNIQUE,
   cover_image_path TEXT DEFAULT '',
+  sight_custom_categories JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -94,6 +95,8 @@ UPDATE sights AS s SET sort_order = sq.rn FROM (
 
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS checklist_items JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE private_notes ADD COLUMN IF NOT EXISTS checklist_items JSONB DEFAULT '[]'::jsonb;
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS sight_custom_categories JSONB DEFAULT '[]'::jsonb;
 
 NOTIFY pgrst, 'reload schema';
 
@@ -731,6 +734,15 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .sight-by{font-size:11px;color:var(--green);font-weight:600;margin-top:3px;}
 .sight-map-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .sight-map-row a{font-size:12px;font-weight:600;}
+.sight-custom-cat-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.sight-custom-cat-row{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg);
+}
+.sight-custom-cat-name{font-size:14px;font-weight:600;flex:1;min-width:0;}
+.sight-custom-cat-actions{display:flex;flex-shrink:0;gap:6px;flex-wrap:wrap;}
+.sight-filter-card{margin-bottom:12px;}
+.sight-drag-handle.sight-drag-disabled{opacity:0.42;cursor:not-allowed;}
 .sight-item.sight-dragging{opacity:0.55;}
 .sight-item-fav{border-color:rgba(245,158,11,0.45);background:rgba(245,158,11,0.06);}
 .sight-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;}
@@ -1281,6 +1293,24 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         </div>
         <button class="btn btn-primary btn-full" onclick="addSight()">Hinzufügen</button>
       </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">🏷️</span> Eigene Orts-Kategorien</div>
+        <p style="font-size:13px;color:var(--text-2);margin:-4px 0 10px;line-height:1.45;">
+          Hier kannst du zusätzliche Kategorien anlegen (z.&nbsp;B. „Museum“, „Tankstelle“). Sie gelten nur für diese Reise und können bearbeitet oder gelöscht werden. Gelöschte Kategorien werden bei betroffenen Orten durch „Andere“ ersetzt.
+        </p>
+        <div class="input-row" style="margin-bottom:8px;">
+          <input id="sight-custom-new-name" class="form-input" type="text" placeholder="Neue Kategorie…" autocomplete="off">
+          <button type="button" class="btn btn-secondary" onclick="addSightCustomCategory()">Hinzufügen</button>
+        </div>
+        <div id="sight-custom-categories-list"></div>
+      </div>
+      <div class="card sight-filter-card">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" for="sight-filter-category">Nach Kategorie filtern</label>
+          <p style="font-size:12px;color:var(--text-2);margin:0 0 8px;line-height:1.4;">„Alle“ zeigt jeden Ort. Bei einem anderen Filter sind Ziehen und ↑/↓ zum Sortieren ausgeschaltet.</p>
+          <select id="sight-filter-category" class="form-input" onchange="onSightFilterChange()"></select>
+        </div>
+      </div>
       <div id="sights-list"></div>
     </div>
 
@@ -1556,6 +1586,7 @@ const S = {
 const SIGHT_PLACE_CATEGORIES = ['Restaurant', 'Sehenswürdigkeit', 'Bahnhof', 'Hotel', 'Strand', 'Bar'];
 const SIGHT_DEFAULT_CATEGORY = 'Sehenswürdigkeit';
 let sightDragId = null;
+let sightCategoryFilter = '';
 
 // ================================================================
 // SUPABASE INIT
@@ -1733,6 +1764,8 @@ async function loadAllData() {
     loadAttachments(),
   ]);
   renderTripsTab();
+  fillSightCategorySelect();
+  renderSightCustomCategoriesManage();
 }
 
 // ================================================================
@@ -2765,14 +2798,232 @@ async function deletePackItem(id) {
 // ================================================================
 // SIGHTS
 // ================================================================
+function sightBuiltinPresetLabels() {
+  return [...SIGHT_PLACE_CATEGORIES, 'Andere'];
+}
+
+function newSightCategoryEntryId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `sc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function parseSightCustomCategories(raw) {
+  if (raw == null || raw === '') return [];
+  let arr = raw;
+  if (typeof raw === 'string') {
+    try {
+      arr = JSON.parse(raw);
+    } catch (_) {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const x of arr) {
+    if (x && typeof x === 'object' && typeof x.name === 'string' && x.name.trim()) {
+      out.push({ id: String(x.id || newSightCategoryEntryId()), name: x.name.trim() });
+    }
+  }
+  return out;
+}
+
+function sightCategoryChoicesForUi(currentValue) {
+  const builtins = sightBuiltinPresetLabels();
+  const customs = parseSightCustomCategories(S.trip?.sight_custom_categories).sort((a, b) =>
+    a.name.localeCompare(b.name, 'de')
+  );
+  const seen = new Set();
+  const opts = [];
+  builtins.forEach((label) => {
+    if (!seen.has(label)) {
+      seen.add(label);
+      opts.push({ label });
+    }
+  });
+  customs.forEach((c) => {
+    if (!seen.has(c.name)) {
+      seen.add(c.name);
+      opts.push({ label: c.name });
+    }
+  });
+  const cur = String(currentValue ?? '').trim();
+  if (cur && !seen.has(cur)) {
+    opts.push({ label: cur });
+  }
+  return opts;
+}
+
+function sightCategoryFilterChoiceList() {
+  const opts = sightCategoryChoicesForUi('');
+  const seen = new Set(opts.map((o) => o.label));
+  for (const s of S.sights || []) {
+    const raw = String(s.place_category ?? '').trim();
+    const key = raw || SIGHT_DEFAULT_CATEGORY;
+    if (!seen.has(key)) {
+      seen.add(key);
+      opts.push({ label: key });
+    }
+  }
+  return opts;
+}
+
+function fillSightCategoryFilter() {
+  const sel = document.getElementById('sight-filter-category');
+  if (!sel) return;
+  const prev = typeof sightCategoryFilter === 'string' ? sightCategoryFilter : sel.value;
+  const list = sightCategoryFilterChoiceList();
+  sel.innerHTML = `<option value="">${esc('Alle')}</option>${list
+    .map((o) => `<option value="${escAttr(o.label)}">${esc(o.label)}</option>`)
+    .join('')}`;
+  const canUse = !prev || prev === '' || list.some((o) => o.label === prev);
+  const next = canUse && prev ? prev : '';
+  sel.value = next;
+  sightCategoryFilter = next;
+}
+
+function onSightFilterChange() {
+  const sel = document.getElementById('sight-filter-category');
+  sightCategoryFilter = sel ? String(sel.value || '') : '';
+  renderSights();
+}
+
+function normalizeSightCategoryValue(raw) {
+  const c = String(raw ?? '').trim();
+  return c || SIGHT_DEFAULT_CATEGORY;
+}
+
 function fillSightCategorySelect() {
   const sel = document.getElementById('sight-category');
   if (!sel) return;
-  sel.innerHTML = SIGHT_PLACE_CATEGORIES.map((c) => {
-    const safe = escAttr(c);
-    return `<option value="${safe}">${esc(c)}</option>`;
-  }).join('');
+  const opts = sightCategoryChoicesForUi(SIGHT_DEFAULT_CATEGORY);
+  sel.innerHTML = opts.map((o) => `<option value="${escAttr(o.label)}">${esc(o.label)}</option>`).join('');
   sel.value = SIGHT_DEFAULT_CATEGORY;
+}
+
+async function saveTripSightCustomCategories(list) {
+  if (!S.trip?.id) return false;
+  suppressCollaborationToast(1600);
+  const { error } = await sb.from('trips').update({ sight_custom_categories: list }).eq('id', S.trip.id);
+  if (error) {
+    toast(error.message, 'error');
+    return false;
+  }
+  S.trip.sight_custom_categories = list;
+  const tr = S.trips.find((t) => t.id === S.trip.id);
+  if (tr) tr.sight_custom_categories = list;
+  fillSightCategorySelect();
+  renderSightCustomCategoriesManage();
+  renderSights();
+  return true;
+}
+
+function renderSightCustomCategoriesManage() {
+  const host = document.getElementById('sight-custom-categories-list');
+  if (!host || !S.trip) return;
+  const list = parseSightCustomCategories(S.trip.sight_custom_categories);
+  if (!list.length) {
+    host.innerHTML = `<div class="empty-state" style="padding:12px;"><p>Noch keine eigenen Kategorien.</p></div>`;
+    return;
+  }
+  host.innerHTML = `<div class="sight-custom-cat-list">${list
+    .map(
+      (c) => `
+    <div class="sight-custom-cat-row">
+      <span class="sight-custom-cat-name">${esc(c.name)}</span>
+      <div class="sight-custom-cat-actions">
+        <button type="button" class="btn btn-sm btn-secondary" onclick="editSightCustomCategory('${escAttr(c.id)}')">Bearbeiten</button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="deleteSightCustomCategory('${escAttr(c.id)}')">Löschen</button>
+      </div>
+    </div>`
+    )
+    .join('')}</div>`;
+}
+
+async function addSightCustomCategory() {
+  const nameRaw = document.getElementById('sight-custom-new-name')?.value?.trim() || '';
+  if (!nameRaw) {
+    toast('Bitte einen Kategorienamen eingeben', 'error');
+    return;
+  }
+  const lower = nameRaw.toLowerCase();
+  if (sightBuiltinPresetLabels().some((x) => x.toLowerCase() === lower)) {
+    toast('Diesen Namen gibt es schon als feste Kategorie', 'error');
+    return;
+  }
+  const list = parseSightCustomCategories(S.trip?.sight_custom_categories);
+  if (list.some((x) => x.name.toLowerCase() === lower)) {
+    toast('Diese Kategorie gibt es schon', 'error');
+    return;
+  }
+  list.push({ id: newSightCategoryEntryId(), name: nameRaw });
+  const ok = await saveTripSightCustomCategories(list);
+  if (ok) {
+    set('sight-custom-new-name', '');
+    toast('Kategorie gespeichert', 'success');
+  }
+}
+
+async function editSightCustomCategory(id) {
+  const list = parseSightCustomCategories(S.trip?.sight_custom_categories);
+  const item = list.find((x) => x.id === id);
+  if (!item) return;
+  const next = prompt('Neuer Name für die Kategorie:', item.name);
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!trimmed) {
+    toast('Name darf nicht leer sein', 'error');
+    return;
+  }
+  if (trimmed === item.name) return;
+  const lower = trimmed.toLowerCase();
+  if (sightBuiltinPresetLabels().some((x) => x.toLowerCase() === lower)) {
+    toast('Name steht schon als feste Kategorie', 'error');
+    return;
+  }
+  if (list.some((x) => x.id !== id && x.name.toLowerCase() === lower)) {
+    toast('Diese Kategorie gibt es schon', 'error');
+    return;
+  }
+  const oldName = item.name;
+  item.name = trimmed;
+  suppressCollaborationToast(2000);
+  const { error: u1 } = await sb
+    .from('sights')
+    .update({ place_category: trimmed, updated_at: new Date().toISOString() })
+    .eq('trip_id', S.trip.id)
+    .eq('place_category', oldName);
+  if (u1) {
+    toast(u1.message, 'error');
+    item.name = oldName;
+    return;
+  }
+  S.sights.forEach((s) => {
+    if (s.place_category === oldName) s.place_category = trimmed;
+  });
+  const ok = await saveTripSightCustomCategories(list);
+  if (ok) toast('Kategorie aktualisiert', 'success');
+}
+
+async function deleteSightCustomCategory(id) {
+  const list = parseSightCustomCategories(S.trip?.sight_custom_categories);
+  const item = list.find((x) => x.id === id);
+  if (!item) return;
+  if (!confirm(`Kategorie „${item.name}“ löschen? Betroffene Orte werden auf „Andere“ gesetzt.`)) return;
+  suppressCollaborationToast(2000);
+  const { error: u1 } = await sb
+    .from('sights')
+    .update({ place_category: 'Andere', updated_at: new Date().toISOString() })
+    .eq('trip_id', S.trip.id)
+    .eq('place_category', item.name);
+  if (u1) {
+    toast(u1.message, 'error');
+    return;
+  }
+  S.sights.forEach((s) => {
+    if (s.place_category === item.name) s.place_category = 'Andere';
+  });
+  const nextList = list.filter((x) => x.id !== id);
+  const ok = await saveTripSightCustomCategories(nextList);
+  if (ok) toast('Kategorie gelöscht', 'success');
 }
 
 function sortSightSubset(arr) {
@@ -2818,6 +3069,7 @@ async function normalizeSightOrdersAfterToggle(changedId, nowVisited) {
 }
 
 async function reorderSightZone(zone, orderedIdsInZone) {
+  if (String(sightCategoryFilter ?? '').trim()) return;
   const active = sortSightSubset(S.sights.filter((s) => !s.visited));
   const visited = sortSightSubset(S.sights.filter((s) => s.visited));
   let newActive;
@@ -2833,6 +3085,10 @@ async function reorderSightZone(zone, orderedIdsInZone) {
 }
 
 function sightDragStart(ev, id) {
+  if (String(sightCategoryFilter ?? '').trim()) {
+    ev.preventDefault();
+    return;
+  }
   sightDragId = id;
   ev.dataTransfer.effectAllowed = 'move';
   ev.dataTransfer.setData('text/plain', id);
@@ -2852,6 +3108,7 @@ function sightDragOver(ev) {
 
 async function sightDropOnRow(ev, zone, targetId) {
   ev.preventDefault();
+  if (String(sightCategoryFilter ?? '').trim()) return;
   if (!sightDragId || sightDragId === targetId) return;
   const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
   const ids = subset.map((s) => s.id);
@@ -2867,6 +3124,10 @@ async function sightDropOnRow(ev, zone, targetId) {
 }
 
 async function sightNudge(id, zone, delta) {
+  if (String(sightCategoryFilter ?? '').trim()) {
+    toast('Zum Sortieren bitte den Filter auf „Alle“ stellen.', '');
+    return;
+  }
   const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
   const ids = subset.map((s) => s.id);
   const idx = ids.indexOf(id);
@@ -2904,18 +3165,38 @@ function sightMapsLinksHtml(s) {
 }
 
 function sightCategoryOptionsHtml(selectedRaw) {
-  const selected = SIGHT_PLACE_CATEGORIES.includes(selectedRaw) ? selectedRaw : SIGHT_DEFAULT_CATEGORY;
-  return SIGHT_PLACE_CATEGORIES.map((c) => `<option value="${escAttr(c)}"${c === selected ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  const opts = sightCategoryChoicesForUi(selectedRaw);
+  let sel = String(selectedRaw ?? '').trim();
+  const labels = opts.map((o) => o.label);
+  if (!sel || !labels.includes(sel)) sel = SIGHT_DEFAULT_CATEGORY;
+  return opts
+    .map((o) => `<option value="${escAttr(o.label)}"${o.label === sel ? ' selected' : ''}>${esc(o.label)}</option>`)
+    .join('');
 }
 
 function renderSights() {
   const el = document.getElementById('sights-list');
   if (!S.sights.length) {
+    fillSightCategoryFilter();
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte hinzugefügt.</p></div>`;
     return;
   }
-  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
-  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
+  fillSightCategoryFilter();
+  const f = String(sightCategoryFilter ?? '').trim();
+  let pool = S.sights;
+  if (f) {
+    pool = S.sights.filter((s) => {
+      const raw = String(s.place_category ?? '').trim();
+      const label = raw || SIGHT_DEFAULT_CATEGORY;
+      return label === f;
+    });
+  }
+  if (!pool.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>${f ? `Keine Orte in „${esc(f)}“. Bitte anderen Filter wählen oder zurück auf „Alle“.`: 'Keine Orte.'}</p></div>`;
+    return;
+  }
+  const active = sortSightSubset(pool.filter((s) => !s.visited));
+  const visited = sortSightSubset(pool.filter((s) => s.visited));
   let html = '';
   if (active.length) {
     html += `<div class="card">${active.map((s) => sightRow(s, 'active')).join('')}</div>`;
@@ -2927,6 +3208,7 @@ function renderSights() {
 }
 
 function sightRow(s, zone) {
+  const reorderLocked = !!String(sightCategoryFilter ?? '').trim();
   const member = S.members.find((m) => m.user_id === s.visited_by);
   const by = s.visited && s.visited_by ? member?.display_name || '' : '';
   const maps = sightMapsLinksHtml(s);
@@ -2935,14 +3217,23 @@ function sightRow(s, zone) {
   const favCls = fav ? ' on' : ' off';
   const favTitle = fav ? 'Favorit entfernen' : 'Als Favorit markieren';
   const rowCls = `sight-item${s.visited ? ' visited' : ''}${fav ? ' sight-item-fav' : ''}`;
-  return `<div class="${rowCls}" id="si-${s.id}" data-sight-id="${s.id}"
-    ondragover="sightDragOver(event)" ondrop="sightDropOnRow(event,'${zone}','${s.id}')">
-    <div class="sight-nudge-wrap" aria-hidden="true">
+  const nudgeBtns = reorderLocked
+    ? `<div class="sight-nudge-wrap" aria-hidden="true">
+      <button type="button" class="sight-nudge-btn" disabled title="Sortieren bei aktivem Filter ausgeblendet">↑</button>
+      <button type="button" class="sight-nudge-btn" disabled title="Sortieren bei aktivem Filter ausgeblendet">↓</button>
+    </div>`
+    : `<div class="sight-nudge-wrap" aria-hidden="true">
       <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',-1)" title="Nach oben">↑</button>
       <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',1)" title="Nach unten">↓</button>
-    </div>
-    <div class="sight-drag-handle" draggable="true" title="Ziehen zum Sortieren"
-      ondragstart="sightDragStart(event,'${s.id}')" ondragend="sightDragEnd(event,'${s.id}')">⠿</div>
+    </div>`;
+  const dragBlock = reorderLocked
+    ? `<div class="sight-drag-handle sight-drag-disabled" draggable="false" title="Sortieren bei aktivem Filter nicht möglich – „Alle“ wählen.">⠿</div>`
+    : `<div class="sight-drag-handle" draggable="true" title="Ziehen zum Sortieren"
+      ondragstart="sightDragStart(event,'${s.id}')" ondragend="sightDragEnd(event,'${s.id}')">⠿</div>`;
+  return `<div class="${rowCls}" id="si-${s.id}" data-sight-id="${s.id}"
+    ondragover="sightDragOver(event)" ondrop="sightDropOnRow(event,'${zone}','${s.id}')">
+    ${nudgeBtns}
+    ${dragBlock}
     <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
     <div class="sight-info">
       <div class="sight-toolbar">
@@ -2966,8 +3257,7 @@ async function addSight() {
     return;
   }
   const note = v('sight-note');
-  let cat = v('sight-category') || SIGHT_DEFAULT_CATEGORY;
-  if (!SIGHT_PLACE_CATEGORIES.includes(cat)) cat = SIGHT_DEFAULT_CATEGORY;
+  const cat = normalizeSightCategoryValue(v('sight-category'));
   const nextSort = Math.max(-1, ...S.sights.map((x) => Number(x.sort_order) || 0)) + 1;
   const { data, error } = await sb
     .from('sights')
@@ -2993,8 +3283,7 @@ async function addSight() {
 }
 
 async function updateSightCategory(id, place_category) {
-  let cat = place_category;
-  if (!SIGHT_PLACE_CATEGORIES.includes(cat)) cat = SIGHT_DEFAULT_CATEGORY;
+  const cat = normalizeSightCategoryValue(place_category);
   suppressCollaborationToast(1600);
   const { error } = await sb.from('sights').update({ place_category: cat, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) {
@@ -4098,7 +4387,12 @@ async function setupRealtime() {
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${S.trip.id}` }, p => {
     if (p.new) {
       S.trip = { ...S.trip, ...p.new };
+      const trList = S.trips.find((t) => t.id === S.trip.id);
+      if (trList) Object.assign(trList, p.new);
       fillTripForm();
+      fillSightCategorySelect();
+      renderSightCustomCategoriesManage();
+      renderSights();
       updateCountdown();
       document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
       updateInviteUi();
