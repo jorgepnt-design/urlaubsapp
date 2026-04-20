@@ -763,6 +763,8 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .attachment-preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#f8faf9;}
 :root[data-theme="dark"] .attachment-preview img{background:#111;}
 .attachment-preview-pdf iframe{width:100%;height:min(320px,50vh);border:none;display:block;}
+.attachment-preview-slot{margin-top:0;}
+.attachment-preview-slot:not(.hidden){margin-top:8px;}
 
 .role-badge{
   display:inline-flex;align-items:center;gap:4px;
@@ -3953,6 +3955,32 @@ async function importSelectedAttachments() {
   }
 }
 
+function toggleAttPreview(id) {
+  const wrap = document.getElementById(`att-wrap-${id}`);
+  const slot = document.getElementById(`att-preview-slot-${id}`);
+  const btn = document.getElementById(`att-preview-btn-${id}`);
+  if (!wrap || !slot || !btn) return;
+  const url = wrap.dataset.previewUrl || '';
+  const kind = wrap.dataset.previewKind || '';
+  if (!url || (kind !== 'img' && kind !== 'pdf')) return;
+  const opening = slot.classList.contains('hidden');
+  if (opening) {
+    if (slot.dataset.loaded !== '1') {
+      if (kind === 'img') {
+        slot.innerHTML = `<div class="attachment-preview"><img src="${escAttr(url)}" alt="" loading="lazy"></div>`;
+      } else {
+        slot.innerHTML = `<div class="attachment-preview attachment-preview-pdf"><iframe src="${escAttr(url)}#view=FitH" title="PDF-Vorschau"></iframe></div>`;
+      }
+      slot.dataset.loaded = '1';
+    }
+    slot.classList.remove('hidden');
+    btn.textContent = 'Ausblenden';
+  } else {
+    slot.classList.add('hidden');
+    btn.textContent = 'Vorschau';
+  }
+}
+
 async function renderAttachments() {
   const el = document.getElementById('attachments-list');
   if (!el) return;
@@ -3971,13 +3999,13 @@ async function renderAttachments() {
     const fname = String(a.file_name || '').toLowerCase();
     const isImg = mime.startsWith('image/');
     const isPdf = mime.includes('pdf') || fname.endsWith('.pdf');
-    let preview = '';
-    if (a.signed_url && isImg) {
-      preview = `<div class="attachment-preview"><img src="${escAttr(a.signed_url)}" alt="" loading="lazy"></div>`;
-    } else if (a.signed_url && isPdf) {
-      preview = `<div class="attachment-preview attachment-preview-pdf"><iframe src="${escAttr(a.signed_url)}#view=FitH" title="PDF-Vorschau"></iframe></div>`;
-    }
-    return `<div class="attachment-item-wrap">
+    const canPreview = !!(a.signed_url && (isImg || isPdf));
+    const previewKind = isImg ? 'img' : isPdf ? 'pdf' : '';
+    const previewUrlAttr = canPreview ? escAttr(a.signed_url) : '';
+    const vorschauBtn = canPreview
+      ? `<button type="button" id="att-preview-btn-${a.id}" class="btn btn-sm btn-secondary" onclick="toggleAttPreview('${a.id}')">Vorschau</button>`
+      : '';
+    return `<div class="attachment-item-wrap" id="att-wrap-${a.id}" data-preview-url="${previewUrlAttr}" data-preview-kind="${previewKind}">
     <div class="attachment-item-inner attachment-item">
       <div class="attachment-icon">${attachmentIcon(a.file_name || '', a.mime_type || '')}</div>
       <div class="attachment-main">
@@ -3986,10 +4014,11 @@ async function renderAttachments() {
       </div>
       <div class="attachment-actions">
         ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${escAttr(a.signed_url)}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
+        ${vorschauBtn}
         <button id="rename-attachment-${a.id}" class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
         <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
       </div>
-    </div>${preview}</div>`;
+    </div><div id="att-preview-slot-${a.id}" class="attachment-preview-slot hidden"></div></div>`;
   }).join('');
 }
 
