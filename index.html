@@ -27,8 +27,56 @@ CREATE TABLE trips (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Falls trips schon ohne Titelbild-Spalte existiert:
--- ALTER TABLE trips ADD COLUMN IF NOT EXISTS cover_image_path TEXT;
+----------------------------------------------------------------
+WICHTIG — Titelbild / Fehler „cover_image_path … schema cache“
+Bestehende Datenbank: Im Supabase SQL Editor GENAU DIES ausführen
+(danach Seite neu laden):
+----------------------------------------------------------------
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS cover_image_path TEXT DEFAULT '';
+NOTIFY pgrst, 'reload schema';
+
+----------------------------------------------------------------
+PRIVAT-NOTIZEN — KOMPLETT-SCRIPT (einmal im SQL Editor ausführen)
+Fehler 42P01 „relation private_notes does not exist“: Du hast nur den
+Upgrade-Teil ohne CREATE ausgeführt — diesen Block GANZ von oben kopieren.
+Voraussetzung: uuid-ossp + Funktion is_trip_member existieren (wie Rest-Setup).
+----------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS private_notes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT DEFAULT '',
+  content TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE private_notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "private_notes_all" ON private_notes;
+CREATE POLICY "private_notes_all" ON private_notes FOR ALL
+  USING (is_trip_member(trip_id) AND user_id = auth.uid())
+  WITH CHECK (is_trip_member(trip_id) AND user_id = auth.uid());
+
+-- Alte Installationen: UNIQUE(trip_id,user_id) entfernen → mehrere Einträge möglich
+ALTER TABLE private_notes DROP CONSTRAINT IF EXISTS private_notes_trip_id_user_id_key;
+ALTER TABLE private_notes ADD COLUMN IF NOT EXISTS title TEXT DEFAULT '';
+ALTER TABLE private_notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+UPDATE private_notes SET created_at = COALESCE(created_at, updated_at, NOW()) WHERE created_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_private_notes_trip_user ON private_notes(trip_id, user_id);
+
+-- Realtime (bei Fehler 42710 / „already member“: diese 3 Zeilen auslassen)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE private_notes;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+NOTIFY pgrst, 'reload schema';
+
+----------------------------------------------------------------
 
 CREATE TABLE trip_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -125,6 +173,18 @@ CREATE TABLE notes (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Mehrere private Notiz-Einträge pro Nutzer und Reise (nur für diesen Nutzer sichtbar)
+CREATE TABLE private_notes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT DEFAULT '',
+  content TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_private_notes_trip_user ON private_notes(trip_id, user_id);
+
 CREATE TABLE emergency_info (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL UNIQUE,
@@ -189,6 +249,7 @@ ALTER TABLE budget_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_limit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_member_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE private_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE emergency_info ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weather_city ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attachments ENABLE ROW LEVEL SECURITY;
@@ -236,6 +297,10 @@ DROP POLICY IF EXISTS "budget_member_limits_all" ON budget_member_limits;
 CREATE POLICY "budget_member_limits_all" ON budget_member_limits FOR ALL USING (is_trip_member(trip_id) AND user_id = auth.uid()) WITH CHECK (is_trip_member(trip_id) AND user_id = auth.uid());
 
 CREATE POLICY "notes_all" ON notes FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
+
+CREATE POLICY "private_notes_all" ON private_notes FOR ALL
+  USING (is_trip_member(trip_id) AND user_id = auth.uid())
+  WITH CHECK (is_trip_member(trip_id) AND user_id = auth.uid());
 CREATE POLICY "emergency_all" ON emergency_info FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "weather_all" ON weather_city FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "attachments_all" ON attachments FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
@@ -250,6 +315,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE budget_member_limits;
 ALTER PUBLICATION supabase_realtime ADD TABLE flights;
 ALTER PUBLICATION supabase_realtime ADD TABLE trips;
 ALTER PUBLICATION supabase_realtime ADD TABLE notes;
+ALTER PUBLICATION supabase_realtime ADD TABLE private_notes;
 ALTER PUBLICATION supabase_realtime ADD TABLE trip_members;
 ALTER PUBLICATION supabase_realtime ADD TABLE attachments;
 
@@ -773,6 +839,11 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .input-row{display:flex;gap:8px;align-items:flex-start;}
 .input-row .form-input{flex:1;}
 .notes-meta{font-size:12px;color:var(--text-2);margin-top:6px;}
+.private-note-card{
+  background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.28);
+  border-radius:var(--radius-md);padding:12px;margin-bottom:10px;
+}
+.private-note-card .form-input{font-size:14px;}
 .info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
 .info-row:last-child{border-bottom:none;}
 .info-label{font-size:13px;color:var(--text-2);}
@@ -1104,6 +1175,13 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <textarea id="notes-content" class="form-input" rows="8" placeholder="Hier eure gemeinsamen Notizen, Ideen, Pläne..." oninput="onNotesInput()"></textarea>
         <div id="notes-meta" class="notes-meta"></div>
       </div>
+      <div class="card" style="border-color:rgba(139,92,246,0.35);background:linear-gradient(180deg,rgba(139,92,246,0.06),var(--card));">
+        <div class="card-title"><span class="icon">🔒</span> Meine privaten Notizen</div>
+        <p style="font-size:13px;color:var(--text-2);margin:-4px 0 10px;line-height:1.45;">Nur für dich – andere Mitreisende können diesen Bereich nicht sehen. Mehrere Einträge möglich.</p>
+        <button type="button" class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="addPrivateNoteEntry()">+ Neuer Eintrag</button>
+        <div id="private-notes-list"></div>
+        <div id="notes-private-meta" class="notes-meta"></div>
+      </div>
       <div class="section-title">💡 Reisetipps</div>
       <div id="tips-list"></div>
     </div>
@@ -1278,6 +1356,7 @@ const S = {
   budgetItems: [],
   budgetMemberLimit: 0,
   notes: null,
+  privateNotes: [],
   emergency: null,
   flights: {},
   transfer: null,
@@ -1385,6 +1464,7 @@ function resetTripScopedState() {
   S.budgetItems = [];
   S.budgetMemberLimit = 0;
   S.notes = null;
+  S.privateNotes = [];
   S.emergency = null;
   S.flights = {};
   S.transfer = null;
@@ -1900,6 +1980,14 @@ function coverExtFromFile(file) {
   return 'jpg';
 }
 
+function tripCoverDbMessage(err) {
+  const msg = String(err?.message || err?.details || err || '');
+  if (/cover_image_path|schema cache|PGRST204/i.test(msg)) {
+    return 'Supabase: Spalte cover_image_path fehlt oder Cache veraltet. SQL Editor (siehe Kopf von index.html): ALTER TABLE … + NOTIFY pgrst reload; Seite neu laden.';
+  }
+  return msg || 'Unbekannter Fehler';
+}
+
 async function uploadTripCover(files) {
   const input = document.getElementById('trip-cover-input');
   const file = files && files[0];
@@ -1928,7 +2016,7 @@ async function uploadTripCover(files) {
     const { error: dbErr } = await sb.from('trips').update({ cover_image_path: objectPath }).eq('id', S.trip.id);
     if (dbErr) {
       await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
-      toast(dbErr.message, 'error');
+      toast(tripCoverDbMessage(dbErr), 'error');
       return;
     }
     if (oldPath && oldPath !== objectPath) {
@@ -1953,7 +2041,7 @@ async function removeTripCover() {
   try {
     await sb.storage.from(ATTACHMENTS_BUCKET).remove([path]);
     const { error } = await sb.from('trips').update({ cover_image_path: '' }).eq('id', S.trip.id);
-    if (error) { toast(error.message, 'error'); return; }
+    if (error) { toast(tripCoverDbMessage(error), 'error'); return; }
     S.trip.cover_image_path = '';
     const t = S.trips.find(x => x.id === S.trip.id);
     if (t) t.cover_image_path = '';
@@ -2553,15 +2641,162 @@ async function saveBudgetLimit() {
 // NOTES
 // ================================================================
 let notesTimer = null;
+const privateNoteTimers = {};
+
+function privateNoteFieldHasFocus(id) {
+  const a = document.activeElement;
+  return !!(a && (a.id === `pn-title-${id}` || a.id === `pn-body-${id}`));
+}
+
 async function loadNotes() {
-  const { data } = await sb.from('notes').select('*').eq('trip_id', S.trip.id).maybeSingle();
+  const [{ data }, { data: privList, error: privErr }] = await Promise.all([
+    sb.from('notes').select('*').eq('trip_id', S.trip.id).maybeSingle(),
+    sb.from('private_notes').select('*').eq('trip_id', S.trip.id).eq('user_id', S.user.id).order('created_at', { ascending: true }),
+  ]);
   S.notes = data;
-  if (data) { set('notes-content', data.content); renderNotesMeta(); }
+  if (data) {
+    set('notes-content', data.content || '');
+    renderNotesMeta();
+  } else {
+    set('notes-content', '');
+    const nm = document.getElementById('notes-meta');
+    if (nm) nm.textContent = '';
+  }
+
+  const privMsg = String(privErr?.message || privErr || '');
+  if (privErr && (/relation|does not exist|schema cache|Could not find|private_notes/i.test(privMsg))) {
+    S.privateNotes = [];
+    renderPrivateNotesList();
+  } else if (privErr) {
+    S.privateNotes = [];
+    renderPrivateNotesList();
+    toast('Private Notizen: ' + privMsg, 'error');
+  } else {
+    S.privateNotes = privList || [];
+    renderPrivateNotesList();
+  }
 }
 
 function onNotesInput() {
   clearTimeout(notesTimer);
   notesTimer = setTimeout(saveNotes, 1000);
+}
+
+function schedulePrivateNoteSave(id) {
+  clearTimeout(privateNoteTimers[id]);
+  privateNoteTimers[id] = setTimeout(() => savePrivateNoteEntry(id), 900);
+}
+
+async function savePrivateNoteEntry(id) {
+  suppressCollaborationToast(1500);
+  const titleEl = document.getElementById(`pn-title-${id}`);
+  const bodyEl = document.getElementById(`pn-body-${id}`);
+  const title = titleEl ? titleEl.value.trim() : '';
+  const content = bodyEl ? bodyEl.value : '';
+  const { data, error } = await sb.from('private_notes')
+    .update({
+      title,
+      content,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('user_id', S.user.id)
+    .select()
+    .single();
+  if (error) {
+    if (/relation|does not exist|schema cache|Could not find the table/i.test(error.message || '')) {
+      toast('Private Notizen: SQL/Migration prüfen (siehe index.html).', 'error');
+    } else {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+  const idx = S.privateNotes.findIndex(n => n.id === id);
+  if (idx >= 0 && data) S.privateNotes[idx] = data;
+  updatePrivateNoteMetaLine(id);
+}
+
+function updatePrivateNoteMetaLine(id) {
+  const row = S.privateNotes.find(n => n.id === id);
+  const host = document.querySelector(`[data-note-id="${id}"] .private-note-meta`);
+  if (!host || !row?.updated_at) return;
+  const when = new Date(row.updated_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  host.textContent = `Gespeichert · ${when}`;
+}
+
+async function addPrivateNoteEntry() {
+  suppressCollaborationToast(1200);
+  showSpinner();
+  try {
+    const { data, error } = await sb.from('private_notes').insert({
+      trip_id: S.trip.id,
+      user_id: S.user.id,
+      title: '',
+      content: '',
+    }).select().single();
+    if (error) {
+      if (/relation|does not exist|schema cache|Could not find|private_notes/i.test(error.message || '')) {
+        toast('Private Notizen: Migration/SQL ausführen (siehe index.html).', 'error');
+      } else {
+        toast(error.message, 'error');
+      }
+      return;
+    }
+    S.privateNotes.push(data);
+    S.privateNotes.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    renderPrivateNotesList();
+    requestAnimationFrame(() => {
+      document.getElementById(`pn-title-${data.id}`)?.focus();
+    });
+  } finally {
+    hideSpinner();
+  }
+}
+
+async function deletePrivateNoteEntry(id) {
+  if (!confirm('Diesen privaten Eintrag wirklich löschen?')) return;
+  suppressCollaborationToast(1200);
+  showSpinner();
+  try {
+    const { error } = await sb.from('private_notes').delete().eq('id', id).eq('user_id', S.user.id);
+    if (error) { toast(error.message, 'error'); return; }
+    delete privateNoteTimers[id];
+    S.privateNotes = S.privateNotes.filter(n => n.id !== id);
+    renderPrivateNotesList();
+    toast('Eintrag gelöscht', 'success');
+  } finally {
+    hideSpinner();
+  }
+}
+
+function renderPrivateNotesList() {
+  const host = document.getElementById('private-notes-list');
+  const meta = document.getElementById('notes-private-meta');
+  if (!host) return;
+  const n = S.privateNotes?.length || 0;
+  if (meta) {
+    meta.textContent = n ? `${n} privater Eintrag${n === 1 ? '' : 'e'}` : '';
+  }
+  if (!n) {
+    host.innerHTML = `<div class="empty-state" style="padding:16px;"><p>Noch keine privaten Einträge.</p></div>`;
+    return;
+  }
+  host.innerHTML = S.privateNotes.map(row => {
+    const nid = row.id;
+    const tit = esc(row.title || '');
+    const txt = esc(row.content || '');
+    const upd = row.updated_at
+      ? new Date(row.updated_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+      : '';
+    return `<div class="private-note-card" data-note-id="${nid}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+        <input type="text" class="form-input" id="pn-title-${nid}" placeholder="Titel (optional)" value="${tit}" autocomplete="off" oninput="schedulePrivateNoteSave('${nid}')" />
+        <button type="button" class="btn btn-sm btn-danger btn-icon" onclick="deletePrivateNoteEntry('${nid}')" title="Eintrag löschen">🗑️</button>
+      </div>
+      <textarea class="form-input" id="pn-body-${nid}" rows="4" placeholder="Text…" autocomplete="off" oninput="schedulePrivateNoteSave('${nid}')">${txt}</textarea>
+      <div class="private-note-meta notes-meta" style="margin-top:6px;">${upd ? `Gespeichert · ${upd}` : ''}</div>
+    </div>`;
+  }).join('');
 }
 
 async function saveNotes() {
@@ -3078,6 +3313,29 @@ async function setupRealtime() {
       set('notes-content', p.new.content);
       renderNotesMeta();
       notifyCollaborationUpdate('Mitgespeichert: Notizen wurden aktualisiert.');
+    }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'private_notes', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    const uid = p.new?.user_id ?? p.old?.user_id;
+    if (uid !== S.user.id) return;
+    if (p.eventType === 'INSERT' && p.new) {
+      if (!S.privateNotes.some(n => n.id === p.new.id)) {
+        S.privateNotes.push(p.new);
+        S.privateNotes.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      }
+      renderPrivateNotesList();
+    } else if (p.eventType === 'UPDATE' && p.new) {
+      const i = S.privateNotes.findIndex(n => n.id === p.new.id);
+      if (i >= 0) S.privateNotes[i] = p.new;
+      else {
+        S.privateNotes.push(p.new);
+        S.privateNotes.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      }
+      if (!privateNoteFieldHasFocus(p.new.id)) renderPrivateNotesList();
+      else updatePrivateNoteMetaLine(p.new.id);
+    } else if (p.eventType === 'DELETE' && p.old) {
+      S.privateNotes = S.privateNotes.filter(n => n.id !== p.old.id);
+      renderPrivateNotesList();
     }
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${S.trip.id}` }, p => {
