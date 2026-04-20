@@ -104,6 +104,15 @@ CREATE TABLE budget_limit (
   amount NUMERIC(10,2) DEFAULT 0
 );
 
+CREATE TABLE budget_member_limits (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  amount NUMERIC(10,2) DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (trip_id, user_id)
+);
+
 CREATE TABLE notes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL UNIQUE,
@@ -174,6 +183,7 @@ ALTER TABLE pack_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sights ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budget_limit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_member_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE emergency_info ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weather_city ENABLE ROW LEVEL SECURITY;
@@ -209,8 +219,18 @@ CREATE POLICY "pack_items_insert" ON pack_items FOR INSERT WITH CHECK (is_trip_m
 CREATE POLICY "pack_items_update" ON pack_items FOR UPDATE USING (is_trip_member(trip_id));
 CREATE POLICY "pack_items_delete" ON pack_items FOR DELETE USING (EXISTS (SELECT 1 FROM pack_lists WHERE id = pack_items.pack_list_id AND owner_user_id = auth.uid()));
 CREATE POLICY "sights_all" ON sights FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
-CREATE POLICY "budget_items_all" ON budget_items FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
+
+DROP POLICY IF EXISTS "budget_items_all" ON budget_items;
+CREATE POLICY "budget_items_select" ON budget_items FOR SELECT USING (is_trip_member(trip_id));
+CREATE POLICY "budget_items_insert" ON budget_items FOR INSERT WITH CHECK (is_trip_member(trip_id) AND created_by = auth.uid());
+CREATE POLICY "budget_items_update" ON budget_items FOR UPDATE USING (is_trip_member(trip_id) AND created_by = auth.uid()) WITH CHECK (is_trip_member(trip_id) AND created_by = auth.uid());
+CREATE POLICY "budget_items_delete" ON budget_items FOR DELETE USING (is_trip_member(trip_id) AND created_by = auth.uid());
+
 CREATE POLICY "budget_limit_all" ON budget_limit FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
+
+DROP POLICY IF EXISTS "budget_member_limits_all" ON budget_member_limits;
+CREATE POLICY "budget_member_limits_all" ON budget_member_limits FOR ALL USING (is_trip_member(trip_id) AND user_id = auth.uid()) WITH CHECK (is_trip_member(trip_id) AND user_id = auth.uid());
+
 CREATE POLICY "notes_all" ON notes FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "emergency_all" ON emergency_info FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
 CREATE POLICY "weather_all" ON weather_city FOR ALL USING (is_trip_member(trip_id)) WITH CHECK (is_trip_member(trip_id));
@@ -222,6 +242,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE pack_lists;
 ALTER PUBLICATION supabase_realtime ADD TABLE sights;
 ALTER PUBLICATION supabase_realtime ADD TABLE budget_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE budget_limit;
+ALTER PUBLICATION supabase_realtime ADD TABLE budget_member_limits;
 ALTER PUBLICATION supabase_realtime ADD TABLE flights;
 ALTER PUBLICATION supabase_realtime ADD TABLE trips;
 ALTER PUBLICATION supabase_realtime ADD TABLE notes;
@@ -1198,7 +1219,6 @@ const S = {
   activePackListId: null,
   sights: [],
   budgetItems: [],
-  budgetLimit: 0,
   budgetMemberLimit: 0,
   notes: null,
   emergency: null,
@@ -1302,7 +1322,7 @@ function resetTripScopedState() {
   S.activePackListId = null;
   S.sights = [];
   S.budgetItems = [];
-  S.budgetLimit = 0;
+  S.budgetMemberLimit = 0;
   S.notes = null;
   S.emergency = null;
   S.flights = {};
@@ -1462,9 +1482,25 @@ async function createNewTrip() {
   const name = readFirstValue(['trip-name-inline', 'setup-trip-name']);
   if (!name) { toast('Bitte Reisename eingeben','error'); return; }
   showSpinner();
-  const inviteCode = Math.random().toString(36).substring(2,8).toUpperCase();
-  const { data: trip, error } = await sb.from('trips').insert({ user_id: S.user.id, name, invite_code: inviteCode }).select().single();
-  if (error) { hideSpinner(); toast(error.message,'error'); return; }
+  let trip = null;
+  let inviteCode = '';
+  for (let attempt = 0; attempt < 10; attempt++) {
+    inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const insert = await sb.from('trips').insert({ user_id: S.user.id, name, invite_code: inviteCode }).select().single();
+    if (!insert.error) {
+      trip = insert.data;
+      break;
+    }
+    if (/duplicate key|invite_code/i.test(insert.error.message || '') || insert.error.code === '23505') continue;
+    hideSpinner();
+    toast(insert.error.message, 'error');
+    return;
+  }
+  if (!trip) {
+    hideSpinner();
+    toast('Konnte keinen eindeutigen Einladungscode erzeugen. Bitte erneut versuchen.', 'error');
+    return;
+  }
   await sb.from('trip_members').insert({ trip_id: trip.id, user_id: S.user.id, display_name: displayName, role: 'owner' });
   S.trip = trip;
   await loadUserTrips();
@@ -1522,6 +1558,10 @@ function renderTripsTab() {
     const active = S.trip?.id === trip.id;
     const role = trip.member_role === 'owner' ? 'Owner' : 'Mitglied';
     const destination = trip.destination ? ` · ${esc(trip.destination)}` : '';
+    const canDelete = trip.user_id === S.user.id;
+    const deleteBtn = canDelete
+      ? `<button class="btn btn-sm btn-danger" onclick="deleteTrip('${trip.id}')">Löschen</button>`
+      : '';
     return `<div class="trip-switch-card${active ? ' active' : ''}">
       <div class="trip-switch-main">
         <div class="trip-switch-name">${esc(trip.name || 'Unbenannte Reise')}</div>
@@ -1529,9 +1569,58 @@ function renderTripsTab() {
       </div>
       <div class="trip-switch-actions">
         <button class="btn ${active ? 'btn-secondary' : 'btn-primary'}" ${active ? 'disabled' : ''} onclick="switchTrip('${trip.id}')">${active ? 'Aktiv' : 'Öffnen'}</button>
+        ${deleteBtn}
       </div>
     </div>`;
   }).join('');
+}
+
+async function deleteTrip(tripId) {
+  const trip = S.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  if (trip.user_id !== S.user.id) {
+    toast('Nur der Ersteller kann diese Reise löschen', 'error');
+    return;
+  }
+  const label = trip.name || 'diese Reise';
+  if (!confirm(`${label} wirklich löschen? Alle zugehörigen Daten werden entfernt.`)) return;
+
+  showSpinner();
+  try {
+    const { error } = await sb.from('trips').delete().eq('id', tripId);
+    if (error) { toast(error.message, 'error'); return; }
+
+    if (S.realtimeChannel) {
+      await sb.removeChannel(S.realtimeChannel);
+      S.realtimeChannel = null;
+    }
+
+    const wasActive = S.trip?.id === tripId;
+    await loadUserTrips();
+
+    if (!S.trips.length) {
+      S.trip = null;
+      setStoredActiveTripId(null);
+      hide('app');
+      show('trip-setup-screen');
+      toast('Reise gelöscht', 'success');
+      return;
+    }
+
+    if (wasActive) {
+      const next = S.trips[0];
+      S.trip = next;
+      setStoredActiveTripId(next.id);
+      await loadAllData();
+      await setupRealtime();
+      updateCountdown();
+    }
+
+    renderTripsTab();
+    toast('Reise gelöscht', 'success');
+  } finally {
+    hideSpinner();
+  }
 }
 
 async function switchTrip(tripId) {
@@ -2051,13 +2140,11 @@ async function fetchWeather(city) {
 // BUDGET
 // ================================================================
 async function loadBudget() {
-  const [{ data: items }, { data: limit }, { data: memberLimit, error: memberLimitError }] = await Promise.all([
+  const [{ data: items }, { data: memberLimit, error: memberLimitError }] = await Promise.all([
     sb.from('budget_items').select('*').eq('trip_id', S.trip.id).order('created_at'),
-    sb.from('budget_limit').select('*').eq('trip_id', S.trip.id).maybeSingle(),
     sb.from('budget_member_limits').select('*').eq('trip_id', S.trip.id).eq('user_id', S.user.id).maybeSingle(),
   ]);
   S.budgetItems = items || [];
-  S.budgetLimit = limit?.amount || 0;
   S.budgetMemberLimit = memberLimit?.amount || 0;
   if (memberLimitError && !/relation|does not exist/i.test(memberLimitError.message || '')) {
     toast('Mitglieder-Budget konnte nicht geladen werden: ' + memberLimitError.message, 'error');
@@ -2258,7 +2345,7 @@ async function loadReusableAttachments() {
     .select('id,name')
     .eq('user_id', S.user.id)
     .neq('id', S.trip.id)
-    .order('created_at', { ascending: false });
+    .order('id', { ascending: false });
   if (tripsError) {
     S.reusableAttachments = [];
     card.classList.remove('hidden');
@@ -2647,9 +2734,6 @@ async function setupRealtime() {
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_items', filter: `trip_id=eq.${S.trip.id}` }, p => {
     handleBudgetRT(p);
   });
-  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_limit', filter: `trip_id=eq.${S.trip.id}` }, p => {
-    if (p.new) { S.budgetLimit = p.new.amount; renderBudget(); }
-  });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_member_limits', filter: `trip_id=eq.${S.trip.id}` }, p => {
     if (p.new && p.new.user_id === S.user.id) {
       S.budgetMemberLimit = p.new.amount || 0;
@@ -2750,6 +2834,14 @@ function handleSightRT(p) {
 function handleBudgetRT(p) {
   if (p.eventType === 'INSERT') {
     if (!S.budgetItems.find(i => i.id === p.new.id)) S.budgetItems.push(p.new);
+  } else if (p.eventType === 'UPDATE') {
+    const idx = S.budgetItems.findIndex(i => i.id === p.new.id);
+    if (idx >= 0) {
+      if (p.new.trip_id === S.trip.id) S.budgetItems[idx] = p.new;
+      else S.budgetItems.splice(idx, 1);
+    } else if (p.new.trip_id === S.trip.id) {
+      S.budgetItems.push(p.new);
+    }
   } else if (p.eventType === 'DELETE') {
     S.budgetItems = S.budgetItems.filter(i => i.id !== p.old?.id);
   }
