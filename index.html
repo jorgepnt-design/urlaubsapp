@@ -23,8 +23,12 @@ CREATE TABLE trips (
   departure_date DATE,
   return_date DATE,
   invite_code TEXT UNIQUE,
+  cover_image_path TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Falls trips schon ohne Titelbild-Spalte existiert:
+-- ALTER TABLE trips ADD COLUMN IF NOT EXISTS cover_image_path TEXT;
 
 CREATE TABLE trip_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -388,12 +392,35 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .progress-wrap{background:var(--bg);border-radius:9999px;height:8px;overflow:hidden;margin:8px 0;}
 .progress-bar{height:100%;background:var(--green);border-radius:9999px;transition:width .4s ease;}
 
+/* ── Start: Titelbild + Countdown ── */
+.home-start-row{
+  display:flex;flex-direction:row;align-items:stretch;gap:12px;margin-bottom:12px;
+}
+.trip-cover-slot{
+  flex:0 0 132px;width:132px;max-width:42%;
+  display:flex;flex-direction:column;gap:8px;
+}
+.trip-cover-frame{
+  width:100%;aspect-ratio:4/3;border-radius:var(--radius-lg);
+  overflow:hidden;background:linear-gradient(145deg,#e8f8f2,#cfeede);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+}
+.trip-cover-frame img{
+  width:100%;height:100%;object-fit:cover;display:block;
+}
+.trip-cover-placeholder{font-size:36px;opacity:0.45;line-height:1;}
+.trip-cover-actions{display:flex;flex-wrap:wrap;gap:6px;}
+.trip-cover-actions .btn{font-size:12px;padding:6px 10px;min-height:34px;}
+.countdown-slot{flex:1;min-width:0;display:flex;}
+.countdown-slot > .countdown-big{width:100%;margin-bottom:0;}
+
 /* ── Countdown ── */
 .countdown-big{
   text-align:center;padding:24px 16px;
   background:linear-gradient(135deg,var(--green),var(--green-dark));
   border-radius:var(--radius-xl);color:#fff;margin-bottom:12px;
 }
+.countdown-big.countdown-big--nodate{padding:20px 14px;}
 .countdown-number{font-size:72px;font-weight:800;line-height:1;}
 .countdown-label{font-size:15px;opacity:0.85;margin-top:4px;}
 .countdown-sub{font-size:13px;opacity:0.7;margin-top:2px;}
@@ -757,6 +784,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   .tab-content{padding:12px 12px 24px;}
   .card{padding:14px;border-radius:14px;}
   .form-row{grid-template-columns:1fr;}
+  .home-start-row{flex-direction:column;align-items:stretch;}
+  .trip-cover-slot{flex:none;width:100%;max-width:100%;}
+  .trip-cover-frame{aspect-ratio:16/9;max-height:200px;}
   .bp-code{font-size:30px;}
   .countdown-number{font-size:58px;}
   .invite-code-display{font-size:30px;letter-spacing:6px;padding:16px;}
@@ -1793,19 +1823,149 @@ function copyInviteCode() {
   navigator.clipboard.writeText(code).then(() => toast('Code kopiert! 📋','success'));
 }
 
-function updateCountdown() {
-  const wrap = document.getElementById('countdown-wrap');
-  if (!S.trip?.departure_date) { wrap.innerHTML = ''; return; }
+function buildCountdownInnerHtml() {
+  if (!S.trip?.departure_date) {
+    return `<div class="countdown-big countdown-big--nodate">
+      <div class="countdown-number">📅</div>
+      <div class="countdown-label">Noch kein Abreisedatum</div>
+      <div class="countdown-sub">Unten bei Reisedaten eintragen</div>
+    </div>`;
+  }
   const dep = new Date(S.trip.departure_date);
   const today = new Date(); today.setHours(0,0,0,0);
   const diff = Math.ceil((dep - today) / 86400000);
+  const dest = esc(S.trip.destination || '');
   if (diff < 0) {
-    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">✈️</div><div class="countdown-label">Reise läuft!</div><div class="countdown-sub">${S.trip.destination || ''}</div></div>`;
-  } else if (diff === 0) {
-    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">🎉</div><div class="countdown-label">Heute geht's los!</div><div class="countdown-sub">${S.trip.destination || ''}</div></div>`;
-  } else {
-    wrap.innerHTML = `<div class="countdown-big"><div class="countdown-number">${diff}</div><div class="countdown-label">Tag${diff===1?'':'e'} bis zur Abreise</div><div class="countdown-sub">nach ${S.trip.destination||''}</div></div>`;
+    return `<div class="countdown-big"><div class="countdown-number">✈️</div><div class="countdown-label">Reise läuft!</div><div class="countdown-sub">${dest}</div></div>`;
   }
+  if (diff === 0) {
+    return `<div class="countdown-big"><div class="countdown-number">🎉</div><div class="countdown-label">Heute geht's los!</div><div class="countdown-sub">${dest}</div></div>`;
+  }
+  return `<div class="countdown-big"><div class="countdown-number">${diff}</div><div class="countdown-label">Tag${diff===1?'':'e'} bis zur Abreise</div><div class="countdown-sub">nach ${dest}</div></div>`;
+}
+
+async function refreshTripCoverImg() {
+  const img = document.getElementById('trip-cover-img');
+  if (!img || !S.trip?.cover_image_path) return;
+  const { data } = await sb.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(S.trip.cover_image_path, 3600);
+  if (data?.signedUrl) img.src = data.signedUrl;
+}
+
+async function renderHomeStartRow() {
+  const wrap = document.getElementById('countdown-wrap');
+  if (!wrap || !S.trip) {
+    if (wrap && !S.trip) wrap.innerHTML = '';
+    return;
+  }
+  const inner = buildCountdownInnerHtml();
+  const owner = isCurrentTripOwner();
+  const hasCover = !!S.trip.cover_image_path;
+  const actions = owner
+    ? `<div class="trip-cover-actions">
+        <input type="file" id="trip-cover-input" class="hidden" accept="image/jpeg,image/png,image/webp" onchange="uploadTripCover(this.files)" />
+        <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('trip-cover-input').click()">Bild wählen</button>
+        ${hasCover ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeTripCover()">Entfernen</button>` : ''}
+      </div>`
+    : '';
+  wrap.innerHTML = `
+    <div class="home-start-row">
+      <aside class="trip-cover-slot">
+        <div class="trip-cover-frame">
+          ${hasCover ? `<img id="trip-cover-img" alt="Titelbild der Reise" />` : `<div class="trip-cover-placeholder" aria-hidden="true">📷</div>`}
+        </div>
+        ${actions}
+      </aside>
+      <div class="countdown-slot">${inner}</div>
+    </div>`;
+  await refreshTripCoverImg();
+}
+
+const COVER_MAX_BYTES = 5 * 1024 * 1024;
+
+function isAllowedCoverImage(file) {
+  if (!file) return false;
+  const t = (file.type || '').toLowerCase();
+  const okType = ['image/jpeg', 'image/png', 'image/webp'].includes(t);
+  const name = (file.name || '').toLowerCase();
+  const okExt = ['.jpg', '.jpeg', '.png', '.webp'].some(ext => name.endsWith(ext));
+  if (!okType && !okExt) return false;
+  if (file.size > COVER_MAX_BYTES) return false;
+  return true;
+}
+
+function coverExtFromFile(file) {
+  const t = (file.type || '').toLowerCase();
+  if (t === 'image/png') return 'png';
+  if (t === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+async function uploadTripCover(files) {
+  const input = document.getElementById('trip-cover-input');
+  const file = files && files[0];
+  if (input) input.value = '';
+  if (!file || !S.trip?.id) return;
+  if (!isCurrentTripOwner()) { toast('Nur der Ersteller kann das Titelbild ändern', 'error'); return; }
+  if (!isAllowedCoverImage(file)) {
+    toast('Nur JPG, PNG oder WebP, max. 5 MB', 'error');
+    return;
+  }
+  const ext = coverExtFromFile(file);
+  const objectPath = `${S.trip.id}/cover-${Date.now()}-${randomToken(8)}.${ext}`;
+  const oldPath = S.trip.cover_image_path || '';
+  suppressCollaborationToast(2500);
+  showSpinner();
+  try {
+    const up = await uploadWithTimeout(objectPath, file, {
+      upsert: true,
+      contentType: file.type || `image/${ext === 'png' ? 'png' : ext === 'webp' ? 'webp' : 'jpeg'}`,
+      cacheControl: '3600',
+    });
+    if (up.error) {
+      toast('Upload fehlgeschlagen: ' + formatSupabaseError(up.error), 'error');
+      return;
+    }
+    const { error: dbErr } = await sb.from('trips').update({ cover_image_path: objectPath }).eq('id', S.trip.id);
+    if (dbErr) {
+      await sb.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
+      toast(dbErr.message, 'error');
+      return;
+    }
+    if (oldPath && oldPath !== objectPath) {
+      await sb.storage.from(ATTACHMENTS_BUCKET).remove([oldPath]);
+    }
+    S.trip.cover_image_path = objectPath;
+    const t = S.trips.find(x => x.id === S.trip.id);
+    if (t) t.cover_image_path = objectPath;
+    await renderHomeStartRow();
+    toast('Titelbild gespeichert ✓', 'success');
+  } finally {
+    hideSpinner();
+  }
+}
+
+async function removeTripCover() {
+  if (!S.trip?.cover_image_path || !isCurrentTripOwner()) return;
+  if (!confirm('Titelbild wirklich entfernen?')) return;
+  const path = S.trip.cover_image_path;
+  suppressCollaborationToast(2000);
+  showSpinner();
+  try {
+    await sb.storage.from(ATTACHMENTS_BUCKET).remove([path]);
+    const { error } = await sb.from('trips').update({ cover_image_path: '' }).eq('id', S.trip.id);
+    if (error) { toast(error.message, 'error'); return; }
+    S.trip.cover_image_path = '';
+    const t = S.trips.find(x => x.id === S.trip.id);
+    if (t) t.cover_image_path = '';
+    await renderHomeStartRow();
+    toast('Titelbild entfernt', 'success');
+  } finally {
+    hideSpinner();
+  }
+}
+
+function updateCountdown() {
+  void renderHomeStartRow();
 }
 
 // ================================================================
