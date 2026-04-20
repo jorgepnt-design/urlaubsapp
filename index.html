@@ -466,6 +466,23 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .item-name{flex:1;font-size:15px;}
 .item-who{font-size:11px;color:var(--green);font-weight:600;}
 .item-del{color:var(--red);font-size:18px;opacity:0.6;padding:4px;min-width:30px;text-align:center;}
+.pack-cat-fold{
+  border:1px solid var(--border);border-radius:var(--radius-md);
+  background:var(--card);margin:10px 0 0;overflow:hidden;
+}
+.pack-cat-fold > summary{
+  list-style:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 12px;font-size:12px;font-weight:700;
+  color:var(--text-2);text-transform:uppercase;letter-spacing:0.6px;
+  user-select:none;
+}
+.pack-cat-fold > summary::-webkit-details-marker{display:none;}
+.pack-cat-fold > summary::after{
+  content:'▾';font-size:12px;opacity:0.5;transition:transform .2s;
+}
+.pack-cat-fold[open] > summary::after{transform:rotate(-180deg);}
+.pack-cat-body{padding:0 0 4px;}
 .category-group-title{
   font-size:12px;font-weight:700;color:var(--text-2);
   text-transform:uppercase;letter-spacing:0.8px;
@@ -502,6 +519,16 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .sight-name{font-size:15px;font-weight:600;}
 .sight-note{font-size:13px;color:var(--text-2);margin-top:2px;}
 .sight-by{font-size:11px;color:var(--green);font-weight:600;margin-top:3px;}
+.sight-map-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.sight-map-row a{font-size:12px;font-weight:600;}
+
+.role-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--border);background:rgba(29,158,117,0.08);color:var(--green-dark);
+}
+.role-badge.member{background:rgba(59,130,246,0.08);color:#1D4ED8;border-color:rgba(59,130,246,0.25);}
+.trip-role-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;}
 
 /* ── Weather ── */
 .weather-current{
@@ -624,7 +651,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .trip-switch-main{flex:1;min-width:0;}
 .trip-switch-name{font-size:15px;font-weight:700;color:var(--text);}
 .trip-switch-meta{font-size:12px;color:var(--text-2);margin-top:3px;}
-.trip-switch-actions{display:flex;flex-shrink:0;}
+.trip-switch-actions{display:flex;flex-shrink:0;flex-wrap:wrap;gap:8px;justify-content:flex-end;}
 .attachment-import-list{display:flex;flex-direction:column;gap:8px;}
 .attachment-import-item{
   display:flex;align-items:flex-start;gap:10px;
@@ -1227,6 +1254,10 @@ const S = {
   attachments: [],
   reusableAttachments: [],
   realtimeChannel: null,
+  rtWarmupUntil: 0,
+  rtSuppressUntil: 0,
+  lastCollabToastAt: 0,
+  lastCollabToastMsg: '',
 };
 
 // ================================================================
@@ -1329,6 +1360,19 @@ function resetTripScopedState() {
   S.transfer = null;
   S.attachments = [];
   S.reusableAttachments = [];
+}
+
+function suppressCollaborationToast(ms = 1400) {
+  S.rtSuppressUntil = Date.now() + ms;
+}
+
+function notifyCollaborationUpdate(message = 'Mitgespeichert: Daten wurden aktualisiert.') {
+  if (Date.now() < S.rtWarmupUntil || Date.now() < S.rtSuppressUntil) return;
+  const now = Date.now();
+  if (message === S.lastCollabToastMsg && now - S.lastCollabToastAt < 2600) return;
+  S.lastCollabToastAt = now;
+  S.lastCollabToastMsg = message;
+  toast(message, '');
 }
 
 async function loadUserTrips() {
@@ -1478,6 +1522,7 @@ async function logout() {
 // TRIP MANAGEMENT
 // ================================================================
 async function createNewTrip() {
+  suppressCollaborationToast(3500);
   const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
   const name = readFirstValue(['trip-name-inline', 'setup-trip-name']);
   if (!name) { toast('Bitte Reisename eingeben','error'); return; }
@@ -1515,6 +1560,7 @@ async function createNewTrip() {
 }
 
 async function joinTripByCode() {
+  suppressCollaborationToast(3500);
   const code = readFirstValue(['trip-invite-code-inline', 'setup-invite-code']).toUpperCase();
   const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
   if (!code) { toast('Bitte Code eingeben','error'); return; }
@@ -1535,6 +1581,7 @@ async function joinTripByCode() {
 }
 
 async function joinFromHome() {
+  suppressCollaborationToast(3500);
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   if (!code) { toast('Bitte Code eingeben','error'); return; }
   showSpinner();
@@ -1556,19 +1603,26 @@ function renderTripsTab() {
   }
   el.innerHTML = S.trips.map(trip => {
     const active = S.trip?.id === trip.id;
-    const role = trip.member_role === 'owner' ? 'Owner' : 'Mitglied';
-    const destination = trip.destination ? ` · ${esc(trip.destination)}` : '';
+    const isOwnerMember = trip.member_role === 'owner';
+    const roleBadge = isOwnerMember
+      ? `<span class="role-badge" title="Du bist Ersteller dieser Reise">👑 Owner</span>`
+      : `<span class="role-badge member" title="Du bist Mitglied dieser Reise">Mitglied</span>`;
+    const destination = trip.destination ? `<span class="trip-switch-meta"> · ${esc(trip.destination)}</span>` : '';
     const canDelete = trip.user_id === S.user.id;
     const deleteBtn = canDelete
       ? `<button class="btn btn-sm btn-danger" onclick="deleteTrip('${trip.id}')">Löschen</button>`
       : '';
+    const leaveBtn = !isOwnerMember
+      ? `<button type="button" class="btn btn-sm btn-secondary" onclick="leaveTrip('${trip.id}')">Verlassen</button>`
+      : '';
     return `<div class="trip-switch-card${active ? ' active' : ''}">
       <div class="trip-switch-main">
         <div class="trip-switch-name">${esc(trip.name || 'Unbenannte Reise')}</div>
-        <div class="trip-switch-meta">${role}${destination}</div>
+        <div class="trip-role-row">${roleBadge}${destination}</div>
       </div>
       <div class="trip-switch-actions">
         <button class="btn ${active ? 'btn-secondary' : 'btn-primary'}" ${active ? 'disabled' : ''} onclick="switchTrip('${trip.id}')">${active ? 'Aktiv' : 'Öffnen'}</button>
+        ${leaveBtn}
         ${deleteBtn}
       </div>
     </div>`;
@@ -1585,6 +1639,7 @@ async function deleteTrip(tripId) {
   const label = trip.name || 'diese Reise';
   if (!confirm(`${label} wirklich löschen? Alle zugehörigen Daten werden entfernt.`)) return;
 
+  suppressCollaborationToast(4000);
   showSpinner();
   try {
     const { error } = await sb.from('trips').delete().eq('id', tripId);
@@ -1642,6 +1697,67 @@ async function switchTrip(tripId) {
   }
 }
 
+async function leaveTrip(tripId) {
+  const trip = S.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  if (trip.member_role === 'owner') {
+    toast('Als Owner kannst du die Reise nicht „verlassen“. Nutze „Löschen“ oder übertrage die Rolle (nicht in dieser App).', 'error');
+    return;
+  }
+  const label = trip.name || 'diese Reise';
+  if (!confirm(`Reise „${label}“ wirklich verlassen? Du verlierst den Zugriff.`)) return;
+
+  suppressCollaborationToast(4000);
+  showSpinner();
+  try {
+    const { data, error } = await sb
+      .from('trip_members')
+      .delete()
+      .eq('trip_id', tripId)
+      .eq('user_id', S.user.id)
+      .select('trip_id');
+    if (error) { toast(error.message, 'error'); return; }
+    if (!data || !data.length) {
+      toast('Mitgliedschaft konnte nicht entfernt werden (Policy prüfen).', 'error');
+      return;
+    }
+
+    const wasActive = S.trip?.id === tripId;
+
+    if (S.realtimeChannel && wasActive) {
+      await sb.removeChannel(S.realtimeChannel);
+      S.realtimeChannel = null;
+    }
+
+    await loadUserTrips();
+
+    if (!S.trips.length) {
+      S.trip = null;
+      setStoredActiveTripId(null);
+      resetTripScopedState();
+      hide('app');
+      show('trip-setup-screen');
+      toast('Du hast alle Reisen verlassen.', 'success');
+      return;
+    }
+
+    if (wasActive) {
+      const next = S.trips[0];
+      S.trip = next;
+      setStoredActiveTripId(next.id);
+      await loadAllData();
+      await setupRealtime();
+      updateCountdown();
+      showTab('home');
+    }
+
+    renderTripsTab();
+    toast('Reise verlassen.', 'success');
+  } finally {
+    hideSpinner();
+  }
+}
+
 async function saveTrip() {
   if (!S.trip) return;
   const upd = {
@@ -1650,6 +1766,7 @@ async function saveTrip() {
     departure_date: v('t-dep') || null,
     return_date: v('t-ret') || null,
   };
+  suppressCollaborationToast(1800);
   showSpinner();
   const { error } = await sb.from('trips').update(upd).eq('id', S.trip.id);
   hideSpinner();
@@ -1711,7 +1828,7 @@ function renderMembers() {
     const canRemove = isCurrentOwner && m.role !== 'owner' && m.user_id !== S.user.id;
     return `<div class="member-card">
       <div class="member-avatar" style="background:${stringColor(m.user_id)}">${initials}${isOnline?'<span class="online-dot"></span>':''}</div>
-      <div><div class="member-name">${esc(m.display_name || 'Unbekannt')}</div><div class="member-meta">${m.role==='owner'?'👑 Ersteller':'Mitglied'}</div></div>
+      <div><div class="member-name">${esc(m.display_name || 'Unbekannt')}</div><div class="member-meta">${m.role==='owner'?'<span class="role-badge">👑 Owner / Ersteller</span>':'<span class="role-badge member">Mitglied</span>'}</div></div>
       ${canRemove ? `<button class="member-remove" title="Mitglied entfernen" onclick="removeMember('${m.user_id}')">×</button>` : ''}
     </div>`;
   }).join('');
@@ -1726,6 +1843,7 @@ async function removeMember(userId) {
   const name = member.display_name || 'dieses Mitglied';
   if (!confirm(`${name} wirklich aus der Reise entfernen?`)) return;
 
+  suppressCollaborationToast(3500);
   showSpinner();
   const { data, error } = await sb
     .from('trip_members')
@@ -1787,6 +1905,7 @@ function fillFlightForm(dir) {
 }
 
 async function saveFlight(dir) {
+  suppressCollaborationToast(1800);
   const row = {
     trip_id: S.trip.id, direction: dir,
     dep_time: v(`f-${dir}-dep-time`), arr_time: v(`f-${dir}-arr-time`),
@@ -1804,6 +1923,7 @@ async function saveFlight(dir) {
 }
 
 async function saveTransfer() {
+  suppressCollaborationToast(1800);
   const row = { trip_id: S.trip.id, details: v('tr-details'), pickup_time: v('tr-time'), pickup_location: v('tr-loc') };
   showSpinner();
   const { error } = await sb.from('transfers').upsert(row, { onConflict: 'trip_id' });
@@ -1927,8 +2047,10 @@ function renderPackListContent() {
     CATEGORIES.forEach(c => { grouped[c] = items.filter(i => i.category === c); });
     for (const [cat, catItems] of Object.entries(grouped)) {
       if (!catItems.length) continue;
-      html += `<div class="category-group-title">${cat}</div>`;
-      html += `<div class="card" style="padding:0 16px;">`;
+      const doneCat = catItems.filter(i => i.checked).length;
+      html += `<details class="pack-cat-fold" open>
+        <summary><span>${esc(cat)}</span><span style="opacity:0.75;font-weight:600;">${doneCat}/${catItems.length}</span></summary>
+        <div class="pack-cat-body"><div class="card" style="padding:0 16px;margin:0;">`;
       catItems.forEach(item => {
         const member = S.members.find(m => m.user_id === item.checked_by);
         const who = item.checked && item.checked_by ? (member?.display_name || emailToName(S.user.email)) : '';
@@ -1941,7 +2063,7 @@ function renderPackListContent() {
           ${isOwner?`<button class="item-del" onclick="deletePackItem('${item.id}')">✕</button>`:''}
         </div>`;
       });
-      html += `</div>`;
+      html += `</div></div></details>`;
     }
   }
   el.innerHTML = html;
@@ -1960,6 +2082,7 @@ async function promptNewList() {
 }
 
 async function promptRenameList(id) {
+  suppressCollaborationToast(1600);
   const list = S.packLists.find(l => l.id === id);
   const name = prompt('Neuer Name:', list?.list_name || '');
   if (!name?.trim()) return;
@@ -1972,6 +2095,7 @@ async function promptRenameList(id) {
 }
 
 async function deletePackList(id) {
+  suppressCollaborationToast(1600);
   if (!confirm('Liste wirklich löschen?')) return;
   showSpinner();
   const { error } = await sb.from('pack_lists').delete().eq('id', id);
@@ -1984,6 +2108,7 @@ async function deletePackList(id) {
 }
 
 async function addPackItem() {
+  suppressCollaborationToast(1600);
   const name = v('new-item-name');
   const category = v('new-item-cat');
   if (!name) { toast('Bitte Artikelname eingeben','error'); return; }
@@ -1995,6 +2120,7 @@ async function addPackItem() {
 }
 
 async function addDefaultItems(listId) {
+  suppressCollaborationToast(1600);
   showSpinner();
   const rows = DEFAULT_ITEMS.map(i => ({ pack_list_id: listId, trip_id: S.trip.id, name: i.name, category: i.category }));
   const { data, error } = await sb.from('pack_items').insert(rows).select();
@@ -2006,6 +2132,7 @@ async function addDefaultItems(listId) {
 }
 
 async function togglePackItem(id, checked) {
+  suppressCollaborationToast(1600);
   const { error } = await sb.from('pack_items').update({ checked, checked_by: checked ? S.user.id : null, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast(error.message,'error'); return; }
   const item = S.packItems.find(i => i.id === id);
@@ -2014,6 +2141,7 @@ async function togglePackItem(id, checked) {
 }
 
 async function deletePackItem(id) {
+  suppressCollaborationToast(1600);
   const { error } = await sb.from('pack_items').delete().eq('id', id);
   if (error) { toast(error.message,'error'); return; }
   S.packItems = S.packItems.filter(i => i.id !== id);
@@ -2027,6 +2155,24 @@ async function loadSights() {
   const { data } = await sb.from('sights').select('*').eq('trip_id', S.trip.id).order('updated_at');
   S.sights = data || [];
   renderSights();
+}
+
+function sightMapsSearchQuery(s) {
+  const parts = [s?.name, s?.note, S.trip?.destination, S.trip?.hotel_address, S.trip?.hotel].filter(Boolean);
+  return parts.join(', ');
+}
+
+function sightMapsLinksHtml(s) {
+  const q = sightMapsSearchQuery(s).trim();
+  if (!q) return '';
+  const enc = encodeURIComponent(q);
+  const gUrl = `https://www.google.com/maps/search/?api=1&query=${enc}`;
+  const oUrl = `https://www.openstreetmap.org/search?query=${enc}`;
+  const safeHint = escAttr(q.length > 80 ? q.slice(0, 80) + '…' : q);
+  return `<div class="sight-map-row">
+    <a href="${gUrl}" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen (${safeHint})">Google Maps</a>
+    <a href="${oUrl}" target="_blank" rel="noopener noreferrer" title="In OpenStreetMap suchen (${safeHint})">OpenStreetMap</a>
+  </div>`;
 }
 
 function renderSights() {
@@ -2047,11 +2193,13 @@ function renderSights() {
 function sightRow(s) {
   const member = S.members.find(m => m.user_id === s.visited_by);
   const by = s.visited && s.visited_by ? (member?.display_name || '') : '';
+  const maps = sightMapsLinksHtml(s);
   return `<div class="sight-item${s.visited?' visited':''}" id="si-${s.id}">
     <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited?'✓':''}</div>
     <div class="sight-info">
       <div class="sight-name">${esc(s.name)}</div>
       ${s.note?`<div class="sight-note">${esc(s.note)}</div>`:''}
+      ${maps}
       ${by?`<div class="sight-by">Besucht von ${esc(by)}</div>`:''}
     </div>
     <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
@@ -2059,6 +2207,7 @@ function sightRow(s) {
 }
 
 async function addSight() {
+  suppressCollaborationToast(1600);
   const name = v('sight-name');
   if (!name) { toast('Bitte Namen eingeben','error'); return; }
   const note = v('sight-note');
@@ -2070,6 +2219,7 @@ async function addSight() {
 }
 
 async function toggleSight(id, visited) {
+  suppressCollaborationToast(1600);
   const { error } = await sb.from('sights').update({ visited, visited_by: visited ? S.user.id : null, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast(error.message,'error'); return; }
   const s = S.sights.find(x => x.id === id);
@@ -2078,6 +2228,7 @@ async function toggleSight(id, visited) {
 }
 
 async function deleteSight(id) {
+  suppressCollaborationToast(1600);
   const { error } = await sb.from('sights').delete().eq('id', id);
   if (error) { toast(error.message,'error'); return; }
   S.sights = S.sights.filter(x => x.id !== id);
@@ -2098,6 +2249,7 @@ async function loadWeatherCity() {
 async function loadWeather() {
   const city = v('weather-city');
   if (!city) { toast('Bitte Stadtname eingeben','error'); return; }
+  suppressCollaborationToast(2000);
   await sb.from('weather_city').upsert({ trip_id: S.trip.id, city_name: city }, { onConflict: 'trip_id' });
   await fetchWeather(city);
 }
@@ -2205,6 +2357,7 @@ function renderBudget() {
 }
 
 async function addBudgetItem() {
+  suppressCollaborationToast(1600);
   const category = v('budget-cat');
   const description = v('budget-desc');
   const amount = parseFloat(v('budget-amount'));
@@ -2218,6 +2371,7 @@ async function addBudgetItem() {
 }
 
 async function deleteBudgetItem(id) {
+  suppressCollaborationToast(1600);
   const { error } = await sb.from('budget_items').delete().eq('id', id);
   if (error) { toast(error.message,'error'); return; }
   S.budgetItems = S.budgetItems.filter(i => i.id !== id);
@@ -2225,6 +2379,7 @@ async function deleteBudgetItem(id) {
 }
 
 async function saveBudgetLimit() {
+  suppressCollaborationToast(1600);
   const amount = parseFloat(v('budget-limit-input'));
   if (isNaN(amount)) { toast('Bitte gültigen Betrag eingeben','error'); return; }
   const { error } = await sb.from('budget_member_limits').upsert({ trip_id: S.trip.id, user_id: S.user.id, amount }, { onConflict: 'trip_id,user_id' });
@@ -2250,6 +2405,7 @@ function onNotesInput() {
 }
 
 async function saveNotes() {
+  suppressCollaborationToast(2000);
   const content = v('notes-content');
   const { error } = await sb.from('notes').upsert({ trip_id: S.trip.id, content, updated_by: S.user.id, updated_at: new Date().toISOString() }, { onConflict: 'trip_id' });
   if (error) { toast(error.message,'error'); return; }
@@ -2296,6 +2452,7 @@ async function loadEmergency() {
 }
 
 async function saveEmergency() {
+  suppressCollaborationToast(1800);
   const row = {
     trip_id: S.trip.id,
     insurance: v('em-insurance'), insurance_number: v('em-ins-num'),
@@ -2311,6 +2468,7 @@ async function saveEmergency() {
 function debounceEmergency() {
   clearTimeout(emTimer);
   emTimer = setTimeout(() => {
+    suppressCollaborationToast(1800);
     const row = { trip_id: S.trip.id, country_numbers: v('em-country') };
     sb.from('emergency_info').upsert(row, { onConflict: 'trip_id' });
   }, 1500);
@@ -2490,6 +2648,7 @@ async function addAttachments() {
   if (!files.length) { toast('Bitte zuerst Dateien auswählen','error'); return; }
   if (!S.trip?.id) { toast('Reise nicht geladen. Bitte Seite neu laden.','error'); return; }
 
+  suppressCollaborationToast(6000);
   showSpinner();
   setAttachmentUploadLoading(true, `Upload: 0/${files.length}`);
   try {
@@ -2560,6 +2719,7 @@ async function addAttachments() {
 async function removeAttachment(id) {
   const row = S.attachments.find(a => a.id === id);
   if (!row) return;
+  suppressCollaborationToast(2500);
   showSpinner();
   const rmStorage = await sb.storage.from(ATTACHMENTS_BUCKET).remove([row.file_path]);
   if (rmStorage.error) { hideSpinner(); toast('Datei konnte nicht gelöscht werden', 'error'); return; }
@@ -2588,6 +2748,7 @@ async function renameAttachment(id) {
   const safeName = sanitizeFileName(desiredName);
   const newPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
 
+  suppressCollaborationToast(2500);
   showSpinner();
   setAttachmentRenameLoading(id, true);
   try {
@@ -2634,6 +2795,7 @@ async function importSelectedAttachments() {
   const selectedIds = Array.from(document.querySelectorAll('[data-attachment-import]:checked')).map(el => el.getAttribute('data-attachment-import'));
   if (!selectedIds.length) { toast('Bitte mindestens eine Anlage auswählen', 'error'); return; }
 
+  suppressCollaborationToast(8000);
   showSpinner();
   const btn = document.getElementById('attachments-import-btn');
   if (btn) {
@@ -2720,6 +2882,7 @@ async function renderAttachments() {
 async function setupRealtime() {
   if (!S.trip) return;
   if (S.realtimeChannel) await sb.removeChannel(S.realtimeChannel);
+  S.rtWarmupUntil = Date.now() + 900;
   const ch = sb.channel(`trip-${S.trip.id}`, { config: { presence: { key: S.user.id } } });
 
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'pack_items', filter: `trip_id=eq.${S.trip.id}` }, p => {
@@ -2734,11 +2897,14 @@ async function setupRealtime() {
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_items', filter: `trip_id=eq.${S.trip.id}` }, p => {
     handleBudgetRT(p);
   });
-  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_member_limits', filter: `trip_id=eq.${S.trip.id}` }, p => {
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_member_limits', filter: `trip_id=eq.${S.trip.id}` }, async p => {
     if (p.new && p.new.user_id === S.user.id) {
       S.budgetMemberLimit = p.new.amount || 0;
       set('budget-limit-input', S.budgetMemberLimit || '');
       renderBudget();
+    } else if (p.new && p.new.user_id !== S.user.id) {
+      notifyCollaborationUpdate('Mitgespeichert: Budget-Grenzen wurden aktualisiert.');
+      await loadBudget();
     }
     if (p.eventType === 'DELETE' && p.old?.user_id === S.user.id) {
       S.budgetMemberLimit = 0;
@@ -2751,7 +2917,7 @@ async function setupRealtime() {
       S.notes = p.new;
       set('notes-content', p.new.content);
       renderNotesMeta();
-      toast('📝 Notizen aktualisiert','');
+      notifyCollaborationUpdate('Mitgespeichert: Notizen wurden aktualisiert.');
     }
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${S.trip.id}` }, p => {
@@ -2760,6 +2926,7 @@ async function setupRealtime() {
       fillTripForm();
       updateCountdown();
       document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+      if (p.eventType === 'UPDATE') notifyCollaborationUpdate('Mitgespeichert: Reisedaten wurden aktualisiert.');
     }
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'flights', filter: `trip_id=eq.${S.trip.id}` }, p => {
@@ -2767,13 +2934,34 @@ async function setupRealtime() {
       S.flights[p.new.direction] = p.new;
       renderBoarding(p.new.direction);
       fillFlightForm(p.new.direction);
+      notifyCollaborationUpdate('Mitgespeichert: Flugdaten wurden aktualisiert.');
     }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'transfers', filter: `trip_id=eq.${S.trip.id}` }, async p => {
+    const { data } = await sb.from('transfers').select('*').eq('trip_id', S.trip.id).maybeSingle();
+    S.transfer = data;
+    if (data) {
+      set('tr-details', data.details);
+      set('tr-time', data.pickup_time);
+      set('tr-loc', data.pickup_location);
+    }
+    notifyCollaborationUpdate('Mitgespeichert: Transfer wurde aktualisiert.');
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'emergency_info', filter: `trip_id=eq.${S.trip.id}` }, async () => {
+    await loadEmergency();
+    notifyCollaborationUpdate('Mitgespeichert: Notfall-Infos wurden aktualisiert.');
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'weather_city', filter: `trip_id=eq.${S.trip.id}` }, async () => {
+    await loadWeatherCity();
+    notifyCollaborationUpdate('Mitgespeichert: Wetter-Ort wurde aktualisiert.');
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${S.trip.id}` }, () => {
     loadMembers();
+    notifyCollaborationUpdate('Mitgespeichert: Mitgliederliste wurde aktualisiert.');
   });
-  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'attachments', filter: `trip_id=eq.${S.trip.id}` }, () => {
-    loadAttachments();
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'attachments', filter: `trip_id=eq.${S.trip.id}` }, async () => {
+    await loadAttachments();
+    notifyCollaborationUpdate('Mitgespeichert: Anlagen wurden aktualisiert.');
   });
 
   ch.on('presence', { event: 'sync' }, () => {
@@ -2784,6 +2972,7 @@ async function setupRealtime() {
 
   ch.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
+      S.rtWarmupUntil = Date.now() + 700;
       const member = S.members.find(m => m.user_id === S.user.id);
       await ch.track({ user_id: S.user.id, email: S.user.email, display_name: member?.display_name || '' });
     }
@@ -2793,59 +2982,89 @@ async function setupRealtime() {
 }
 
 function handlePackItemRT(p) {
+  let shouldNotify = false;
   if (p.eventType === 'INSERT') {
     if (!S.packItems.find(i => i.id === p.new.id)) S.packItems.push(p.new);
+    shouldNotify = true;
   } else if (p.eventType === 'UPDATE') {
     const idx = S.packItems.findIndex(i => i.id === p.new.id);
+    const prev = idx >= 0 ? S.packItems[idx] : null;
     if (idx >= 0) S.packItems[idx] = p.new; else S.packItems.push(p.new);
-    if (p.new.updated_by !== S.user.id) flashEl(`pi-${p.new.id}`);
+    const otherChecks = p.new.checked && p.new.checked_by && p.new.checked_by !== S.user.id;
+    const metaChanged = prev && (prev.name !== p.new.name || prev.category !== p.new.category);
+    if (otherChecks) flashEl(`pi-${p.new.id}`);
+    if (otherChecks || metaChanged) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
     S.packItems = S.packItems.filter(i => i.id !== p.old?.id);
+    shouldNotify = true;
   }
   renderPackTab();
+  if (shouldNotify) notifyCollaborationUpdate('Mitgespeichert: Packliste wurde aktualisiert.');
 }
 
 function handlePackListRT(p) {
+  let shouldNotify = false;
   if (p.eventType === 'INSERT') {
     if (!S.packLists.find(l => l.id === p.new.id)) S.packLists.push(p.new);
+    shouldNotify = true;
   } else if (p.eventType === 'UPDATE') {
     const idx = S.packLists.findIndex(l => l.id === p.new.id);
+    const prev = idx >= 0 ? S.packLists[idx] : null;
     if (idx >= 0) S.packLists[idx] = p.new;
+    if (prev && prev.list_name !== p.new.list_name) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
     S.packLists = S.packLists.filter(l => l.id !== p.old?.id);
     if (S.activePackListId === p.old?.id) S.activePackListId = S.packLists[0]?.id || null;
+    shouldNotify = true;
   }
   renderPackTab();
+  if (shouldNotify) notifyCollaborationUpdate('Mitgespeichert: Packlisten wurden aktualisiert.');
 }
 
 function handleSightRT(p) {
+  let shouldNotify = false;
   if (p.eventType === 'INSERT') {
     if (!S.sights.find(s => s.id === p.new.id)) S.sights.push(p.new);
+    shouldNotify = true;
   } else if (p.eventType === 'UPDATE') {
     const idx = S.sights.findIndex(s => s.id === p.new.id);
+    const prev = idx >= 0 ? S.sights[idx] : null;
     if (idx >= 0) { S.sights[idx] = p.new; if (p.new.visited_by !== S.user.id) flashEl(`si-${p.new.id}`); }
     else S.sights.push(p.new);
+    const otherVisit = p.new.visited_by && p.new.visited_by !== S.user.id;
+    const textChange = prev && (prev.name !== p.new.name || prev.note !== p.new.note);
+    if (otherVisit || textChange) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
     S.sights = S.sights.filter(s => s.id !== p.old?.id);
+    shouldNotify = true;
   }
   renderSights();
+  if (shouldNotify) notifyCollaborationUpdate('Mitgespeichert: Orte wurden aktualisiert.');
 }
 
 function handleBudgetRT(p) {
+  let shouldNotify = false;
   if (p.eventType === 'INSERT') {
     if (!S.budgetItems.find(i => i.id === p.new.id)) S.budgetItems.push(p.new);
+    if (p.new.created_by !== S.user.id) shouldNotify = true;
   } else if (p.eventType === 'UPDATE') {
     const idx = S.budgetItems.findIndex(i => i.id === p.new.id);
     if (idx >= 0) {
+      const prev = S.budgetItems[idx];
       if (p.new.trip_id === S.trip.id) S.budgetItems[idx] = p.new;
       else S.budgetItems.splice(idx, 1);
+      if (p.new.trip_id === S.trip.id && p.new.created_by !== S.user.id) shouldNotify = true;
+      if (prev && p.new.trip_id === S.trip.id && prev.amount !== p.new.amount && p.new.created_by !== S.user.id) shouldNotify = true;
     } else if (p.new.trip_id === S.trip.id) {
       S.budgetItems.push(p.new);
+      if (p.new.created_by !== S.user.id) shouldNotify = true;
     }
   } else if (p.eventType === 'DELETE') {
+    if (p.old?.created_by !== S.user.id) shouldNotify = true;
     S.budgetItems = S.budgetItems.filter(i => i.id !== p.old?.id);
   }
   renderBudget();
+  if (shouldNotify) notifyCollaborationUpdate('Mitgespeichert: Budget wurde aktualisiert.');
 }
 
 function flashEl(id) {
@@ -2904,6 +3123,7 @@ function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
 function v(id) { return document.getElementById(id)?.value?.trim() || ''; }
 function set(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return esc(s).replace(/'/g,'&#39;'); }
 function emailToName(email) { return (email||'').split('@')[0] || 'Unbekannt'; }
 function getInitials(name) { return (name||'?').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase() || '?'; }
 function stringColor(str) {
