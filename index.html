@@ -1592,7 +1592,11 @@ let sightCategoryFilter = '';
 // SUPABASE INIT
 // ================================================================
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { detectSessionInUrl: true, persistSession: true }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
 });
 
 // ================================================================
@@ -1613,6 +1617,10 @@ async function init() {
     await afterLogin();
   }
   sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'TOKEN_REFRESHED' && session?.user) {
+      S.user = session.user;
+      return;
+    }
     if (event === 'PASSWORD_RECOVERY') {
       if (session) S.user = session.user;
       showResetScreen();
@@ -1627,9 +1635,24 @@ async function init() {
       S.user = session.user;
       await afterLogin();
     } else if (event === 'SIGNED_OUT') {
+      resetSpinnerOverlay();
       location.reload();
     }
   });
+
+  document.addEventListener('visibilitychange', () => {
+    try {
+      if (document.visibilityState === 'visible') {
+        sb.auth.startAutoRefresh();
+        sb.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) S.user = session.user;
+        });
+      } else {
+        sb.auth.stopAutoRefresh();
+      }
+    } catch (_) {}
+  });
+
   window.addEventListener('online', () => { const el = document.getElementById('offline-banner-inner'); if (el) el.style.display = 'none'; });
   window.addEventListener('offline', () => { const el = document.getElementById('offline-banner-inner'); if (el) el.style.display = 'block'; });
   try {
@@ -1637,6 +1660,8 @@ async function init() {
       if (getStoredThemePreference() === 'system') applyTheme();
     });
   } catch (_) {}
+
+  window.addEventListener('unhandledrejection', () => resetSpinnerOverlay());
 }
 
 async function afterLogin() {
@@ -1801,10 +1826,10 @@ async function loginWithPassword() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   if (!email || !password) { toast('Bitte E-Mail und Passwort eingeben','error'); return; }
-  showSpinner();
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
+  await runWithSpinner(async () => {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { toast(error.message,'error'); return; }
+  });
 }
 
 async function registerWithPassword() {
@@ -1812,10 +1837,12 @@ async function registerWithPassword() {
   const password = document.getElementById('login-password').value;
   if (!email || !password) { toast('Bitte E-Mail und Passwort eingeben','error'); return; }
   if (password.length < 6) { toast('Passwort muss mindestens 6 Zeichen haben','error'); return; }
-  showSpinner();
-  const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: getBaseRedirectUrl() } });
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
+  let regErr = null;
+  await runWithSpinner(async () => {
+    const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: getBaseRedirectUrl() } });
+    regErr = error;
+  });
+  if (regErr) { toast(regErr.message,'error'); return; }
   document.getElementById('login-sent').classList.remove('hidden');
   document.getElementById('login-sent').textContent = '📬 Registrierung gesendet. Bitte prüfe dein E-Mail-Postfach.';
   toast('Registrierung gestartet ✓','success');
@@ -1824,10 +1851,12 @@ async function registerWithPassword() {
 async function requestPasswordReset() {
   const email = document.getElementById('login-email').value.trim();
   if (!email) { toast('Bitte zuerst deine E-Mail eingeben','error'); return; }
-  showSpinner();
-  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getBaseRedirectUrl() });
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
+  let rstErr = null;
+  await runWithSpinner(async () => {
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: getBaseRedirectUrl() });
+    rstErr = error;
+  });
+  if (rstErr) { toast(rstErr.message,'error'); return; }
   document.getElementById('login-sent').classList.remove('hidden');
   document.getElementById('login-sent').textContent = '📬 Reset-Mail wurde gesendet. Bitte prüfe dein E-Mail-Postfach.';
   toast('Reset-Mail wurde gesendet ✓','success');
@@ -1839,10 +1868,12 @@ async function setNewPassword() {
   if (!p1 || !p2) { toast('Bitte beide Passwortfelder ausfüllen','error'); return; }
   if (p1 !== p2) { toast('Die Passwörter stimmen nicht überein','error'); return; }
   if (p1.length < 6) { toast('Passwort muss mindestens 6 Zeichen haben','error'); return; }
-  showSpinner();
-  const { error } = await sb.auth.updateUser({ password: p1 });
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
+  let pwdErr = null;
+  await runWithSpinner(async () => {
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    pwdErr = error;
+  });
+  if (pwdErr) { toast(pwdErr.message,'error'); return; }
   toast('Passwort erfolgreich geändert ✓','success');
   document.getElementById('reset-password').value = '';
   document.getElementById('reset-password-2').value = '';
@@ -1865,37 +1896,40 @@ async function createNewTrip() {
   const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
   const name = readFirstValue(['trip-name-inline', 'setup-trip-name']);
   if (!name) { toast('Bitte Reisename eingeben','error'); return; }
-  showSpinner();
-  let trip = null;
-  let inviteCode = '';
-  for (let attempt = 0; attempt < 10; attempt++) {
-    inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const insert = await sb.from('trips').insert({ user_id: S.user.id, name, invite_code: inviteCode }).select().single();
-    if (!insert.error) {
-      trip = insert.data;
-      break;
+  await runWithSpinner(async () => {
+    let trip = null;
+    let inviteCode = '';
+    for (let attempt = 0; attempt < 10; attempt++) {
+      inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const insert = await sb.from('trips').insert({ user_id: S.user.id, name, invite_code: inviteCode }).select().single();
+      if (!insert.error) {
+        trip = insert.data;
+        break;
+      }
+      if (/duplicate key|invite_code/i.test(insert.error.message || '') || insert.error.code === '23505') continue;
+      toast(insert.error.message, 'error');
+      return;
     }
-    if (/duplicate key|invite_code/i.test(insert.error.message || '') || insert.error.code === '23505') continue;
-    hideSpinner();
-    toast(insert.error.message, 'error');
-    return;
-  }
-  if (!trip) {
-    hideSpinner();
-    toast('Konnte keinen eindeutigen Einladungscode erzeugen. Bitte erneut versuchen.', 'error');
-    return;
-  }
-  await sb.from('trip_members').insert({ trip_id: trip.id, user_id: S.user.id, display_name: displayName, role: 'owner' });
-  S.trip = trip;
-  await loadUserTrips();
-  setStoredActiveTripId(trip.id);
-  set('trip-name-inline', '');
-  hideSpinner();
-  await loadAllData();
-  show('app');
-  hide('trip-setup-screen');
-  setupRealtime();
-  updateCountdown();
+    if (!trip) {
+      toast('Konnte keinen eindeutigen Einladungscode erzeugen. Bitte erneut versuchen.', 'error');
+      return;
+    }
+    const tm = await sb.from('trip_members').insert({ trip_id: trip.id, user_id: S.user.id, display_name: displayName, role: 'owner' });
+    if (tm.error) {
+      toast(tm.error.message, 'error');
+      await sb.from('trips').delete().eq('id', trip.id);
+      return;
+    }
+    S.trip = trip;
+    await loadUserTrips();
+    setStoredActiveTripId(trip.id);
+    set('trip-name-inline', '');
+    await loadAllData();
+    show('app');
+    hide('trip-setup-screen');
+    setupRealtime();
+    updateCountdown();
+  });
 }
 
 async function joinTripByCode() {
@@ -1903,30 +1937,33 @@ async function joinTripByCode() {
   const code = readFirstValue(['trip-invite-code-inline', 'setup-invite-code']).toUpperCase();
   const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
   if (!code) { toast('Bitte Code eingeben','error'); return; }
-  showSpinner();
-  const { data: tripId, error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: displayName });
-  if (error || !tripId) { hideSpinner(); toast('Ungültiger Einladungscode','error'); return; }
-  const { data: trip } = await sb.from('trips').select('*').eq('id', tripId).single();
-  S.trip = trip;
-  await loadUserTrips();
-  setStoredActiveTripId(trip.id);
-  set('trip-invite-code-inline', '');
-  await loadAllData();
-  hideSpinner();
-  show('app');
-  hide('trip-setup-screen');
-  setupRealtime();
-  updateCountdown();
+  await runWithSpinner(async () => {
+    const { data: tripId, error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: displayName });
+    if (error || !tripId) { toast('Ungültiger Einladungscode','error'); return; }
+    const { data: trip } = await sb.from('trips').select('*').eq('id', tripId).single();
+    if (!trip) { toast('Reise konnte nicht geladen werden.', 'error'); return; }
+    S.trip = trip;
+    await loadUserTrips();
+    setStoredActiveTripId(trip.id);
+    set('trip-invite-code-inline', '');
+    await loadAllData();
+    show('app');
+    hide('trip-setup-screen');
+    setupRealtime();
+    updateCountdown();
+  });
 }
 
 async function joinFromHome() {
   suppressCollaborationToast(3500);
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   if (!code) { toast('Bitte Code eingeben','error'); return; }
-  showSpinner();
-  const { error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: emailToName(S.user.email) });
-  hideSpinner();
-  if (error) { toast('Ungültiger Code','error'); return; }
+  let rpcErr = null;
+  await runWithSpinner(async () => {
+    const { error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: emailToName(S.user.email) });
+    rpcErr = error;
+  });
+  if (rpcErr) { toast('Ungültiger Code','error'); return; }
   toast('Beigetreten! 🎉','success');
   document.getElementById('join-code').value = '';
   await loadUserTrips();
@@ -2106,14 +2143,14 @@ async function saveTrip() {
     return_date: v('t-ret') || null,
   };
   suppressCollaborationToast(1800);
-  showSpinner();
-  const { error } = await sb.from('trips').update(upd).eq('id', S.trip.id);
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  Object.assign(S.trip, upd);
-  document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
-  updateCountdown();
-  toast('Gespeichert ✓','success');
+  await runWithSpinner(async () => {
+    const { error } = await sb.from('trips').update(upd).eq('id', S.trip.id);
+    if (error) { toast(error.message,'error'); return; }
+    Object.assign(S.trip, upd);
+    document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+    updateCountdown();
+    toast('Gespeichert ✓','success');
+  });
 }
 
 function fillTripForm() {
@@ -2491,16 +2528,20 @@ async function removeMember(userId) {
   if (!confirm(`${name} wirklich aus der Reise entfernen?`)) return;
 
   suppressCollaborationToast(3500);
-  showSpinner();
-  const { data, error } = await sb
-    .from('trip_members')
-    .delete()
-    .eq('trip_id', S.trip.id)
-    .eq('user_id', userId)
-    .select('id');
-  hideSpinner();
-  if (error) { toast('Entfernen nicht möglich: ' + error.message, 'error'); return; }
-  if (!data || data.length === 0) {
+  let delErr = null;
+  let delData = null;
+  await runWithSpinner(async () => {
+    const { data, error } = await sb
+      .from('trip_members')
+      .delete()
+      .eq('trip_id', S.trip.id)
+      .eq('user_id', userId)
+      .select('id');
+    delErr = error;
+    delData = data;
+  });
+  if (delErr) { toast('Entfernen nicht möglich: ' + delErr.message, 'error'); return; }
+  if (!delData || delData.length === 0) {
     toast('Mitglied wurde serverseitig nicht gelöscht. Bitte RLS-Policy für trip_members_delete prüfen.', 'error');
     return;
   }
@@ -2560,23 +2601,23 @@ async function saveFlight(dir) {
     flight_number: v(`f-${dir}-num`), airline: v(`f-${dir}-airline`),
     seat: v(`f-${dir}-seat`), booking_ref: v(`f-${dir}-ref`),
   };
-  showSpinner();
-  const { data, error } = await sb.from('flights').upsert(row, { onConflict: 'trip_id,direction' }).select().single();
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  S.flights[dir] = data;
-  renderBoarding(dir);
-  toast('Flug gespeichert ✓','success');
+  await runWithSpinner(async () => {
+    const { data, error } = await sb.from('flights').upsert(row, { onConflict: 'trip_id,direction' }).select().single();
+    if (error) { toast(error.message,'error'); return; }
+    S.flights[dir] = data;
+    renderBoarding(dir);
+    toast('Flug gespeichert ✓','success');
+  });
 }
 
 async function saveTransfer() {
   suppressCollaborationToast(1800);
   const row = { trip_id: S.trip.id, details: v('tr-details'), pickup_time: v('tr-time'), pickup_location: v('tr-loc') };
-  showSpinner();
-  const { error } = await sb.from('transfers').upsert(row, { onConflict: 'trip_id' });
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  toast('Transfer gespeichert ✓','success');
+  await runWithSpinner(async () => {
+    const { error } = await sb.from('transfers').upsert(row, { onConflict: 'trip_id' });
+    if (error) { toast(error.message,'error'); return; }
+    toast('Transfer gespeichert ✓','success');
+  });
 }
 
 function renderBoarding(dir) {
@@ -2719,13 +2760,13 @@ function renderPackListContent() {
 async function promptNewList() {
   const name = prompt('Name der neuen Packliste:');
   if (!name?.trim()) return;
-  showSpinner();
-  const { data, error } = await sb.from('pack_lists').insert({ trip_id: S.trip.id, owner_user_id: S.user.id, list_name: name.trim() }).select().single();
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  S.packLists.push(data);
-  S.activePackListId = data.id;
-  renderPackTab();
+  await runWithSpinner(async () => {
+    const { data, error } = await sb.from('pack_lists').insert({ trip_id: S.trip.id, owner_user_id: S.user.id, list_name: name.trim() }).select().single();
+    if (error) { toast(error.message,'error'); return; }
+    S.packLists.push(data);
+    S.activePackListId = data.id;
+    renderPackTab();
+  });
 }
 
 async function promptRenameList(id) {
@@ -2733,25 +2774,25 @@ async function promptRenameList(id) {
   const list = S.packLists.find(l => l.id === id);
   const name = prompt('Neuer Name:', list?.list_name || '');
   if (!name?.trim()) return;
-  showSpinner();
-  const { error } = await sb.from('pack_lists').update({ list_name: name.trim() }).eq('id', id);
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  list.list_name = name.trim();
-  renderPackTab();
+  await runWithSpinner(async () => {
+    const { error } = await sb.from('pack_lists').update({ list_name: name.trim() }).eq('id', id);
+    if (error) { toast(error.message,'error'); return; }
+    list.list_name = name.trim();
+    renderPackTab();
+  });
 }
 
 async function deletePackList(id) {
   suppressCollaborationToast(1600);
   if (!confirm('Liste wirklich löschen?')) return;
-  showSpinner();
-  const { error } = await sb.from('pack_lists').delete().eq('id', id);
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  S.packLists = S.packLists.filter(l => l.id !== id);
-  S.packItems = S.packItems.filter(i => i.pack_list_id !== id);
-  S.activePackListId = S.packLists[0]?.id || null;
-  renderPackTab();
+  await runWithSpinner(async () => {
+    const { error } = await sb.from('pack_lists').delete().eq('id', id);
+    if (error) { toast(error.message,'error'); return; }
+    S.packLists = S.packLists.filter(l => l.id !== id);
+    S.packItems = S.packItems.filter(i => i.pack_list_id !== id);
+    S.activePackListId = S.packLists[0]?.id || null;
+    renderPackTab();
+  });
 }
 
 async function addPackItem() {
@@ -2768,14 +2809,14 @@ async function addPackItem() {
 
 async function addDefaultItems(listId) {
   suppressCollaborationToast(1600);
-  showSpinner();
-  const rows = DEFAULT_ITEMS.map(i => ({ pack_list_id: listId, trip_id: S.trip.id, name: i.name, category: i.category }));
-  const { data, error } = await sb.from('pack_items').insert(rows).select();
-  hideSpinner();
-  if (error) { toast(error.message,'error'); return; }
-  S.packItems.push(...data);
-  renderPackTab();
-  toast('Vorschläge hinzugefügt ✓','success');
+  await runWithSpinner(async () => {
+    const rows = DEFAULT_ITEMS.map(i => ({ pack_list_id: listId, trip_id: S.trip.id, name: i.name, category: i.category }));
+    const { data, error } = await sb.from('pack_items').insert(rows).select();
+    if (error) { toast(error.message,'error'); return; }
+    S.packItems.push(...data);
+    renderPackTab();
+    toast('Vorschläge hinzugefügt ✓','success');
+  });
 }
 
 async function togglePackItem(id, checked) {
@@ -4117,15 +4158,15 @@ async function removeAttachment(id) {
   const row = S.attachments.find(a => a.id === id);
   if (!row) return;
   suppressCollaborationToast(2500);
-  showSpinner();
-  const rmStorage = await sb.storage.from(ATTACHMENTS_BUCKET).remove([row.file_path]);
-  if (rmStorage.error) { hideSpinner(); toast('Datei konnte nicht gelöscht werden', 'error'); return; }
-  const { error } = await sb.from('attachments').delete().eq('id', id);
-  hideSpinner();
-  if (error) { toast('Anlage-Eintrag konnte nicht gelöscht werden', 'error'); return; }
-  S.attachments = S.attachments.filter(a => a.id !== id);
-  renderAttachments();
-  toast('Anlage entfernt', 'success');
+  await runWithSpinner(async () => {
+    const rmStorage = await sb.storage.from(ATTACHMENTS_BUCKET).remove([row.file_path]);
+    if (rmStorage.error) { toast('Datei konnte nicht gelöscht werden', 'error'); return; }
+    const { error } = await sb.from('attachments').delete().eq('id', id);
+    if (error) { toast('Anlage-Eintrag konnte nicht gelöscht werden', 'error'); return; }
+    S.attachments = S.attachments.filter(a => a.id !== id);
+    renderAttachments();
+    toast('Anlage entfernt', 'success');
+  });
 }
 
 async function renameAttachment(id) {
@@ -4581,6 +4622,21 @@ function hideSpinner() {
   if (spinnerCount === 0) {
     const el = document.getElementById('spinner-overlay');
     if (el) el.style.display = 'none';
+  }
+}
+/** Setzt den Lade-Overlay-Zähler zurück (nach Fehlern / hängenden Promises). */
+function resetSpinnerOverlay() {
+  spinnerCount = 0;
+  const el = document.getElementById('spinner-overlay');
+  if (el) el.style.display = 'none';
+}
+/** Führt eine async Funktion aus und beendet den Spinner immer im finally (auch bei Netzwerkfehlern). */
+async function runWithSpinner(fn) {
+  showSpinner();
+  try {
+    return await fn();
+  } finally {
+    hideSpinner();
   }
 }
 
