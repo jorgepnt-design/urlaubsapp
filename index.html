@@ -593,6 +593,26 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .attachment-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .attachment-meta{font-size:12px;color:var(--text-2);margin-top:2px;}
 .attachment-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;}
+.trips-list{display:flex;flex-direction:column;gap:10px;}
+.trip-switch-card{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-md);padding:14px;
+}
+.trip-switch-card.active{border-color:var(--green);box-shadow:0 0 0 2px rgba(29, 158, 117, 0.12);}
+.trip-switch-main{flex:1;min-width:0;}
+.trip-switch-name{font-size:15px;font-weight:700;color:var(--text);}
+.trip-switch-meta{font-size:12px;color:var(--text-2);margin-top:3px;}
+.trip-switch-actions{display:flex;flex-shrink:0;}
+.attachment-import-list{display:flex;flex-direction:column;gap:8px;}
+.attachment-import-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.attachment-import-item:last-child{border-bottom:none;}
+.attachment-import-item input{margin-top:4px;}
+.attachment-import-main{flex:1;min-width:0;}
+.attachment-import-trip{font-size:12px;color:var(--text-2);margin-top:2px;}
 
 /* ── Invite Code ── */
 .invite-code-display{
@@ -728,6 +748,11 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     min-height:40px;
     padding:10px 8px;
   }
+  .trip-switch-card{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .trip-switch-actions .btn{width:100%;}
 }
 </style>
 </head>
@@ -982,14 +1007,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <button class="btn btn-primary btn-full" onclick="addBudgetItem()">Hinzufügen</button>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">🎯</span> Budget-Limit</div>
+        <div class="card-title"><span class="icon">🎯</span> Mein Budget-Limit</div>
         <div class="input-row">
           <input id="budget-limit-input" class="form-input" type="number" min="0" step="10" placeholder="z.B. 2000">
           <button class="btn btn-secondary" onclick="saveBudgetLimit()">Setzen</button>
         </div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">📋</span> Ausgaben</div>
+        <div class="card-title"><span class="icon">📋</span> Meine Ausgaben</div>
         <div id="budget-items-list"></div>
       </div>
     </div>
@@ -1045,9 +1070,46 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
           <button class="btn btn-secondary" onclick="loadAttachments()">Aktualisieren</button>
         </div>
       </div>
+      <div id="attachments-import-card" class="card hidden">
+        <div class="card-title"><span class="icon">📂</span> Anlagen aus anderen Reisen übernehmen</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:10px;">
+          Als Reise-Owner kannst du vorhandene Anlagen aus deinen anderen Reisen auswählen und in diese Reise kopieren.
+        </p>
+        <div id="attachments-import-list" class="attachment-import-list"></div>
+        <button id="attachments-import-btn" class="btn btn-secondary btn-full" style="margin-top:12px" onclick="importSelectedAttachments()">Ausgewählte Anlagen übernehmen</button>
+      </div>
       <div class="card">
         <div class="card-title"><span class="icon">🗂️</span> Deine Anlagen</div>
         <div id="attachments-list" class="attachments-list"></div>
+      </div>
+    </div>
+
+    <!-- TAB 10: TRIPS -->
+    <div id="tab-trips" class="tab-content">
+      <div class="card">
+        <div class="card-title"><span class="icon">🧳</span> Meine Reisen</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:10px;">Wähle hier aus, welche Reise du gerade bearbeiten möchtest.</p>
+        <div id="trips-list" class="trips-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">➕</span> Neue Reise</div>
+        <div class="form-group">
+          <label class="form-label">Dein Anzeigename</label>
+          <input id="trip-display-name" class="form-input" type="text" placeholder="z.B. Jorge">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reisename</label>
+          <input id="trip-name-inline" class="form-input" type="text" placeholder="z.B. Sommerurlaub Barcelona">
+        </div>
+        <button class="btn btn-primary btn-full" onclick="createNewTrip()">Neue Reise erstellen</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">🔗</span> Reise beitreten</div>
+        <div class="form-group">
+          <label class="form-label">Einladungscode</label>
+          <input id="trip-invite-code-inline" class="form-input" type="text" placeholder="Einladungscode" maxlength="6" style="text-transform:uppercase;letter-spacing:4px;font-weight:700;">
+        </div>
+        <button class="btn btn-secondary btn-full" onclick="joinTripByCode()">Mit Code beitreten</button>
       </div>
     </div>
   </div><!-- /tab-container -->
@@ -1063,6 +1125,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <button class="nav-item" onclick="showTab('notes')" data-tab="notes"><span class="nav-icon">📝</span>Notizen</button>
     <button class="nav-item" onclick="showTab('emergency')" data-tab="emergency"><span class="nav-icon">🆘</span>Notfall</button>
     <button class="nav-item" onclick="showTab('attachments')" data-tab="attachments"><span class="nav-icon">📎</span>Anlagen</button>
+    <button class="nav-item" onclick="showTab('trips')" data-tab="trips"><span class="nav-icon">🧳</span>Reisen</button>
   </nav>
 </div><!-- /app -->
 
@@ -1127,6 +1190,7 @@ const WMO = {
 const S = {
   user: null,
   trip: null,
+  trips: [],
   members: [],
   onlineUsers: [],
   packLists: [],
@@ -1135,11 +1199,13 @@ const S = {
   sights: [],
   budgetItems: [],
   budgetLimit: 0,
+  budgetMemberLimit: 0,
   notes: null,
   emergency: null,
   flights: {},
   transfer: null,
   attachments: [],
+  reusableAttachments: [],
   realtimeChannel: null,
 };
 
@@ -1201,17 +1267,87 @@ async function afterLogin() {
   }
 }
 
-async function loadUserTrip() {
-  const { data } = await sb.from('trip_members').select('trip_id, trips(*)').eq('user_id', S.user.id).order('joined_at', { ascending: false }).limit(1).maybeSingle();
-  if (data && data.trips) {
-    S.trip = data.trips;
-    return S.trip.id;
+function activeTripStorageKey() {
+  return `active_trip_${S.user?.id || 'anon'}`;
+}
+
+function getStoredActiveTripId() {
+  try { return localStorage.getItem(activeTripStorageKey()); } catch { return null; }
+}
+
+function setStoredActiveTripId(tripId) {
+  try {
+    if (tripId) localStorage.setItem(activeTripStorageKey(), tripId);
+    else localStorage.removeItem(activeTripStorageKey());
+  } catch {}
+}
+
+function isCurrentTripOwner() {
+  return !!S.trip && S.trip.user_id === S.user?.id;
+}
+
+function readFirstValue(ids) {
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el && String(el.value || '').trim()) return String(el.value).trim();
   }
-  return null;
+  return '';
+}
+
+function resetTripScopedState() {
+  S.members = [];
+  S.onlineUsers = [];
+  S.packLists = [];
+  S.packItems = [];
+  S.activePackListId = null;
+  S.sights = [];
+  S.budgetItems = [];
+  S.budgetLimit = 0;
+  S.notes = null;
+  S.emergency = null;
+  S.flights = {};
+  S.transfer = null;
+  S.attachments = [];
+  S.reusableAttachments = [];
+}
+
+async function loadUserTrips() {
+  const { data, error } = await sb
+    .from('trip_members')
+    .select('trip_id, role, joined_at, display_name, trips(*)')
+    .eq('user_id', S.user.id)
+    .order('joined_at', { ascending: false });
+  if (error) { toast(error.message, 'error'); return []; }
+  S.trips = (data || [])
+    .filter(row => row.trips)
+    .map(row => ({
+      ...row.trips,
+      member_role: row.role,
+      member_display_name: row.display_name,
+      joined_at: row.joined_at,
+    }));
+  renderTripsTab();
+  return S.trips;
+}
+
+async function loadUserTrip() {
+  const trips = await loadUserTrips();
+  if (!trips.length) {
+    S.trip = null;
+    setStoredActiveTripId(null);
+    return null;
+  }
+  const storedTripId = getStoredActiveTripId();
+  const activeTrip = trips.find(t => t.id === storedTripId) || trips[0];
+  S.trip = activeTrip;
+  setStoredActiveTripId(activeTrip.id);
+  renderTripsTab();
+  return activeTrip.id;
 }
 
 async function loadAllData() {
   if (!S.trip) return;
+  resetTripScopedState();
   document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
   document.getElementById('invite-code-display').textContent = S.trip.invite_code || '------';
   fillTripForm();
@@ -1226,6 +1362,7 @@ async function loadAllData() {
     loadWeatherCity(),
     loadAttachments(),
   ]);
+  renderTripsTab();
 }
 
 // ================================================================
@@ -1321,8 +1458,8 @@ async function logout() {
 // TRIP MANAGEMENT
 // ================================================================
 async function createNewTrip() {
-  const displayName = document.getElementById('setup-display-name').value.trim() || emailToName(S.user.email);
-  const name = document.getElementById('setup-trip-name').value.trim();
+  const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
+  const name = readFirstValue(['trip-name-inline', 'setup-trip-name']);
   if (!name) { toast('Bitte Reisename eingeben','error'); return; }
   showSpinner();
   const inviteCode = Math.random().toString(36).substring(2,8).toUpperCase();
@@ -1330,6 +1467,9 @@ async function createNewTrip() {
   if (error) { hideSpinner(); toast(error.message,'error'); return; }
   await sb.from('trip_members').insert({ trip_id: trip.id, user_id: S.user.id, display_name: displayName, role: 'owner' });
   S.trip = trip;
+  await loadUserTrips();
+  setStoredActiveTripId(trip.id);
+  set('trip-name-inline', '');
   hideSpinner();
   await loadAllData();
   show('app');
@@ -1339,14 +1479,17 @@ async function createNewTrip() {
 }
 
 async function joinTripByCode() {
-  const code = document.getElementById('setup-invite-code').value.trim().toUpperCase();
-  const displayName = document.getElementById('setup-display-name').value.trim() || emailToName(S.user.email);
+  const code = readFirstValue(['trip-invite-code-inline', 'setup-invite-code']).toUpperCase();
+  const displayName = readFirstValue(['trip-display-name', 'setup-display-name']) || emailToName(S.user.email);
   if (!code) { toast('Bitte Code eingeben','error'); return; }
   showSpinner();
   const { data: tripId, error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: displayName });
   if (error || !tripId) { hideSpinner(); toast('Ungültiger Einladungscode','error'); return; }
   const { data: trip } = await sb.from('trips').select('*').eq('id', tripId).single();
   S.trip = trip;
+  await loadUserTrips();
+  setStoredActiveTripId(trip.id);
+  set('trip-invite-code-inline', '');
   await loadAllData();
   hideSpinner();
   show('app');
@@ -1364,7 +1507,50 @@ async function joinFromHome() {
   if (error) { toast('Ungültiger Code','error'); return; }
   toast('Beigetreten! 🎉','success');
   document.getElementById('join-code').value = '';
+  await loadUserTrips();
   await loadMembers();
+}
+
+function renderTripsTab() {
+  const el = document.getElementById('trips-list');
+  if (!el) return;
+  if (!S.trips.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🧳</div><p>Du hast noch keine Reisen.</p></div>`;
+    return;
+  }
+  el.innerHTML = S.trips.map(trip => {
+    const active = S.trip?.id === trip.id;
+    const role = trip.member_role === 'owner' ? 'Owner' : 'Mitglied';
+    const destination = trip.destination ? ` · ${esc(trip.destination)}` : '';
+    return `<div class="trip-switch-card${active ? ' active' : ''}">
+      <div class="trip-switch-main">
+        <div class="trip-switch-name">${esc(trip.name || 'Unbenannte Reise')}</div>
+        <div class="trip-switch-meta">${role}${destination}</div>
+      </div>
+      <div class="trip-switch-actions">
+        <button class="btn ${active ? 'btn-secondary' : 'btn-primary'}" ${active ? 'disabled' : ''} onclick="switchTrip('${trip.id}')">${active ? 'Aktiv' : 'Öffnen'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function switchTrip(tripId) {
+  if (!tripId || S.trip?.id === tripId) return;
+  const trip = S.trips.find(t => t.id === tripId);
+  if (!trip) { toast('Reise nicht gefunden', 'error'); return; }
+  showSpinner();
+  try {
+    S.trip = trip;
+    setStoredActiveTripId(trip.id);
+    await loadAllData();
+    await setupRealtime();
+    updateCountdown();
+    renderTripsTab();
+    showTab('home');
+    toast(`Reise gewechselt: ${trip.name || 'Unbenannte Reise'}`, 'success');
+  } finally {
+    hideSpinner();
+  }
 }
 
 async function saveTrip() {
@@ -1865,30 +2051,58 @@ async function fetchWeather(city) {
 // BUDGET
 // ================================================================
 async function loadBudget() {
-  const [{ data: items }, { data: limit }] = await Promise.all([
+  const [{ data: items }, { data: limit }, { data: memberLimit, error: memberLimitError }] = await Promise.all([
     sb.from('budget_items').select('*').eq('trip_id', S.trip.id).order('created_at'),
     sb.from('budget_limit').select('*').eq('trip_id', S.trip.id).maybeSingle(),
+    sb.from('budget_member_limits').select('*').eq('trip_id', S.trip.id).eq('user_id', S.user.id).maybeSingle(),
   ]);
   S.budgetItems = items || [];
   S.budgetLimit = limit?.amount || 0;
-  if (S.budgetLimit) set('budget-limit-input', S.budgetLimit);
+  S.budgetMemberLimit = memberLimit?.amount || 0;
+  if (memberLimitError && !/relation|does not exist/i.test(memberLimitError.message || '')) {
+    toast('Mitglieder-Budget konnte nicht geladen werden: ' + memberLimitError.message, 'error');
+  }
+  set('budget-limit-input', S.budgetMemberLimit || '');
   renderBudget();
 }
 
 function renderBudget() {
-  const total = S.budgetItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
-  const pct = S.budgetLimit > 0 ? Math.min(100, Math.round(total/S.budgetLimit*100)) : 0;
-  const over = S.budgetLimit > 0 && total > S.budgetLimit;
+  const myItems = S.budgetItems.filter(i => i.created_by === S.user.id);
+  const myTotal = myItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
+  const tripTotal = S.budgetItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
+  const pct = S.budgetMemberLimit > 0 ? Math.min(100, Math.round(myTotal / S.budgetMemberLimit * 100)) : 0;
+  const over = S.budgetMemberLimit > 0 && myTotal > S.budgetMemberLimit;
+  const grouped = S.budgetItems.reduce((acc, item) => {
+    const key = item.created_by || 'unknown';
+    acc[key] = acc[key] || { total: 0, count: 0 };
+    acc[key].total += parseFloat(item.amount || 0);
+    acc[key].count++;
+    return acc;
+  }, {});
+  const summaryHtml = Object.entries(grouped).map(([userId, info]) => {
+    const member = S.members.find(m => m.user_id === userId);
+    const name = member?.display_name || (userId === S.user.id ? 'Du' : 'Mitglied');
+    return `<div class="budget-item-row">
+      <span class="budget-cat-badge">${esc(name)}</span>
+      <span class="budget-desc">${info.count} Eintrag${info.count === 1 ? '' : 'e'}</span>
+      <div style="text-align:right;flex-shrink:0"><div class="budget-amount-cell">${info.total.toFixed(2)} €</div></div>
+    </div>`;
+  }).join('');
   document.getElementById('budget-overview').innerHTML = `
     <div class="budget-total">
-      <div class="budget-amount">${total.toFixed(2)} €</div>
-      <div class="budget-sub">${S.budgetLimit>0?`von ${S.budgetLimit.toFixed(2)} € Budget · ${pct}% verplant`:'Kein Budget-Limit gesetzt'}</div>
-      ${S.budgetLimit>0?`<div class="progress-wrap" style="margin-top:12px;background:rgba(255,255,255,0.2)"><div class="progress-bar" style="width:${pct}%;background:${over?'#EF4444':'#fff'}"></div></div>`:''}
+      <div class="budget-amount">${myTotal.toFixed(2)} €</div>
+      <div class="budget-sub">${S.budgetMemberLimit>0?`von ${S.budgetMemberLimit.toFixed(2)} € deinem Budget · ${pct}% genutzt`:'Kein persönliches Budget-Limit gesetzt'}</div>
+      ${S.budgetMemberLimit>0?`<div class="progress-wrap" style="margin-top:12px;background:rgba(255,255,255,0.2)"><div class="progress-bar" style="width:${pct}%;background:${over?'#EF4444':'#fff'}"></div></div>`:''}
       ${over?`<div style="font-size:12px;color:#FCA5A5;margin-top:6px;">⚠️ Budget überschritten!</div>`:''}
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">👥</span> Reise-Gesamtübersicht</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px;">Gesamt: ${tripTotal.toFixed(2)} €</div>
+      ${summaryHtml || `<div class="empty-state"><p>Noch keine Budgeteinträge.</p></div>`}
     </div>`;
   const listEl = document.getElementById('budget-items-list');
-  if (!S.budgetItems.length) { listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">💸</div><p>Noch keine Ausgaben eingetragen.</p></div>`; return; }
-  listEl.innerHTML = S.budgetItems.map(item => {
+  if (!myItems.length) { listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">💸</div><p>Du hast noch keine eigenen Ausgaben eingetragen.</p></div>`; return; }
+  listEl.innerHTML = myItems.map(item => {
     const member = S.members.find(m => m.user_id === item.created_by);
     const by = member?.display_name || '';
     return `<div class="budget-item-row">
@@ -1926,11 +2140,11 @@ async function deleteBudgetItem(id) {
 async function saveBudgetLimit() {
   const amount = parseFloat(v('budget-limit-input'));
   if (isNaN(amount)) { toast('Bitte gültigen Betrag eingeben','error'); return; }
-  const { error } = await sb.from('budget_limit').upsert({ trip_id: S.trip.id, amount }, { onConflict: 'trip_id' });
+  const { error } = await sb.from('budget_member_limits').upsert({ trip_id: S.trip.id, user_id: S.user.id, amount }, { onConflict: 'trip_id,user_id' });
   if (error) { toast(error.message,'error'); return; }
-  S.budgetLimit = amount;
+  S.budgetMemberLimit = amount;
   renderBudget();
-  toast('Budget-Limit gesetzt ✓','success');
+  toast('Persönliches Budget-Limit gesetzt ✓','success');
 }
 
 // ================================================================
@@ -2026,7 +2240,86 @@ async function loadAttachments() {
     .order('created_at', { ascending: false });
   if (error) { toast('Anlagen konnten nicht geladen werden', 'error'); return; }
   S.attachments = data || [];
+  await loadReusableAttachments();
   renderAttachments();
+}
+
+async function loadReusableAttachments() {
+  const card = document.getElementById('attachments-import-card');
+  if (!card) return;
+  if (!isCurrentTripOwner()) {
+    S.reusableAttachments = [];
+    card.classList.add('hidden');
+    renderReusableAttachments();
+    return;
+  }
+  const { data: ownedTrips, error: tripsError } = await sb
+    .from('trips')
+    .select('id,name')
+    .eq('user_id', S.user.id)
+    .neq('id', S.trip.id)
+    .order('created_at', { ascending: false });
+  if (tripsError) {
+    S.reusableAttachments = [];
+    card.classList.remove('hidden');
+    renderReusableAttachments('Vorhandene Anlagen konnten nicht geladen werden.');
+    return;
+  }
+  const tripIds = (ownedTrips || []).map(t => t.id);
+  if (!tripIds.length) {
+    S.reusableAttachments = [];
+    card.classList.remove('hidden');
+    renderReusableAttachments();
+    return;
+  }
+  const tripMap = Object.fromEntries((ownedTrips || []).map(t => [t.id, t.name || 'Unbenannte Reise']));
+  const { data: files, error: filesError } = await sb
+    .from('attachments')
+    .select('*')
+    .in('trip_id', tripIds)
+    .order('created_at', { ascending: false });
+  if (filesError) {
+    S.reusableAttachments = [];
+    card.classList.remove('hidden');
+    renderReusableAttachments('Vorhandene Anlagen konnten nicht geladen werden.');
+    return;
+  }
+  S.reusableAttachments = (files || []).map(file => ({ ...file, trip_name: tripMap[file.trip_id] || 'Andere Reise' }));
+  card.classList.remove('hidden');
+  renderReusableAttachments();
+}
+
+function renderReusableAttachments(message = '') {
+  const el = document.getElementById('attachments-import-list');
+  const card = document.getElementById('attachments-import-card');
+  const btn = document.getElementById('attachments-import-btn');
+  if (!el || !card || !btn) return;
+  if (!isCurrentTripOwner()) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  if (message) {
+    el.innerHTML = `<div class="empty-state"><p>${esc(message)}</p></div>`;
+    btn.disabled = true;
+    return;
+  }
+  if (!S.reusableAttachments.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📂</div><p>Keine übernehmbaren Anlagen aus anderen Reisen gefunden.</p></div>`;
+    btn.disabled = true;
+    return;
+  }
+  btn.disabled = false;
+  el.innerHTML = S.reusableAttachments.map(file => `
+    <label class="attachment-import-item">
+      <input type="checkbox" data-attachment-import="${file.id}">
+      <div class="attachment-import-main">
+        <div class="attachment-name">${esc(file.file_name || 'Anlage')}</div>
+        <div class="attachment-meta">${formatBytes(file.file_size)} · ${new Date(file.created_at).toLocaleDateString('de-DE')}</div>
+        <div class="attachment-import-trip">Aus Reise: ${esc(file.trip_name || 'Andere Reise')}</div>
+      </div>
+    </label>
+  `).join('');
 }
 
 function formatBytes(bytes) {
@@ -2249,6 +2542,62 @@ async function renameAttachment(id) {
   }
 }
 
+async function importSelectedAttachments() {
+  if (!isCurrentTripOwner()) { toast('Nur der Reise-Owner kann Anlagen übernehmen', 'error'); return; }
+  const selectedIds = Array.from(document.querySelectorAll('[data-attachment-import]:checked')).map(el => el.getAttribute('data-attachment-import'));
+  if (!selectedIds.length) { toast('Bitte mindestens eine Anlage auswählen', 'error'); return; }
+
+  showSpinner();
+  const btn = document.getElementById('attachments-import-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Übernehme...';
+  }
+  try {
+    let imported = 0;
+    for (const id of selectedIds) {
+      const source = S.reusableAttachments.find(item => item.id === id);
+      if (!source) continue;
+      const duplicate = S.attachments.find(item => item.file_name === source.file_name && Number(item.file_size || 0) === Number(source.file_size || 0));
+      if (duplicate) continue;
+
+      const safeName = sanitizeFileName(source.file_name || 'anlage');
+      const newPath = `${S.trip.id}/${Date.now()}-${randomToken(10)}-${safeName}`;
+      const cp = await sb.storage.from(ATTACHMENTS_BUCKET).copy(source.file_path, newPath);
+      if (cp.error) {
+        toast(`Übernahme fehlgeschlagen: ${formatSupabaseError(cp.error)}`, 'error');
+        continue;
+      }
+
+      const { data, error } = await sb.from('attachments').insert({
+        trip_id: S.trip.id,
+        uploaded_by: S.user.id,
+        file_name: source.file_name,
+        file_path: newPath,
+        file_size: source.file_size || 0,
+        mime_type: source.mime_type || 'application/octet-stream',
+      }).select().single();
+      if (error || !data) {
+        await sb.storage.from(ATTACHMENTS_BUCKET).remove([newPath]);
+        toast(`Übernahme fehlgeschlagen: ${formatSupabaseError(error)}`, 'error');
+        continue;
+      }
+      S.attachments.unshift(data);
+      imported++;
+    }
+    await renderAttachments();
+    await loadReusableAttachments();
+    document.querySelectorAll('[data-attachment-import]:checked').forEach(el => { el.checked = false; });
+    if (imported > 0) toast(`${imported} Anlage(n) übernommen`, 'success');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Ausgewählte Anlagen übernehmen';
+    }
+    hideSpinner();
+  }
+}
+
 async function renderAttachments() {
   const el = document.getElementById('attachments-list');
   if (!el) return;
@@ -2300,6 +2649,18 @@ async function setupRealtime() {
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_limit', filter: `trip_id=eq.${S.trip.id}` }, p => {
     if (p.new) { S.budgetLimit = p.new.amount; renderBudget(); }
+  });
+  ch.on('postgres_changes', { event: '*', schema: 'public', table: 'budget_member_limits', filter: `trip_id=eq.${S.trip.id}` }, p => {
+    if (p.new && p.new.user_id === S.user.id) {
+      S.budgetMemberLimit = p.new.amount || 0;
+      set('budget-limit-input', S.budgetMemberLimit || '');
+      renderBudget();
+    }
+    if (p.eventType === 'DELETE' && p.old?.user_id === S.user.id) {
+      S.budgetMemberLimit = 0;
+      set('budget-limit-input', '');
+      renderBudget();
+    }
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `trip_id=eq.${S.trip.id}` }, p => {
     if (p.new && p.new.updated_by !== S.user.id) {
