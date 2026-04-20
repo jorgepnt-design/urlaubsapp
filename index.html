@@ -322,7 +322,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE attachments;
 ================================================================
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<!-- Browser-QR (globales QRCode): npm-Paket "qrcode" ist CommonJS und setzt kein window.QRCode -->
+<script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
 <style>
 :root {
   --green: #1D9E75;
@@ -2103,6 +2104,24 @@ function updateInviteUi() {
   void refreshInviteSharing();
 }
 
+function refreshInviteQrWithImageFallback(url) {
+  const wrap = document.getElementById('invite-qr-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const img = document.createElement('img');
+  img.alt = 'QR-Code Einladungslink';
+  img.width = 168;
+  img.height = 168;
+  img.style.display = 'block';
+  img.referrerPolicy = 'no-referrer';
+  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=168x168&ecc=M&margin=8&bgcolor=${encodeURIComponent(dark ? '161c19' : 'ffffff')}&color=${encodeURIComponent(dark ? 'e8eee9' : '1a1a2e')}&data=${encodeURIComponent(url)}`;
+  img.onerror = () => {
+    wrap.innerHTML = '<span style="font-size:12px;color:var(--text-2);padding:8px;text-align:center;">QR konnte nicht geladen werden. Nutze „Link kopieren“.</span>';
+  };
+  wrap.appendChild(img);
+}
+
 function refreshInviteSharing() {
   const wrap = document.getElementById('invite-qr-wrap');
   const urlBox = document.getElementById('invite-url-box');
@@ -2117,23 +2136,31 @@ function refreshInviteSharing() {
   }
   if (urlText) urlText.textContent = url;
   if (urlBox) urlBox.classList.remove('hidden');
-  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
-    wrap.innerHTML = '<span style="font-size:12px;color:var(--text-2);padding:8px;text-align:center;">QR-Bibliothek lädt nicht.</span>';
-    return;
-  }
-  const canvas = document.createElement('canvas');
+
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  QRCode.toCanvas(canvas, url, {
-    width: 168,
-    margin: 1,
-    color: { dark: dark ? '#e8eee9' : '#1A1A2E', light: dark ? '#161c19' : '#ffffff' },
-  }, err => {
-    if (err) {
-      wrap.innerHTML = `<span style="font-size:12px;color:var(--text-2);padding:8px;">QR fehlgeschlagen</span>`;
+  const darkHex = dark ? '#e8eee9' : '#1A1A2E';
+  const lightHex = dark ? '#161c19' : '#ffffff';
+
+  try {
+    if (typeof QRCode !== 'undefined' && typeof QRCode === 'function') {
+      const holder = document.createElement('div');
+      holder.style.display = 'inline-block';
+      wrap.appendChild(holder);
+      new QRCode(holder, {
+        text: url,
+        width: 168,
+        height: 168,
+        colorDark: darkHex,
+        colorLight: lightHex,
+        correctLevel: QRCode.CorrectLevel.M,
+      });
       return;
     }
-    wrap.appendChild(canvas);
-  });
+  } catch (e) {
+    wrap.innerHTML = '';
+  }
+
+  refreshInviteQrWithImageFallback(url);
 }
 
 async function shareInviteLink() {
