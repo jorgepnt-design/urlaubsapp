@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS private_notes (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   title TEXT DEFAULT '',
   content TEXT DEFAULT '',
+  checklist_items JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -73,6 +74,26 @@ BEGIN
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
+
+NOTIFY pgrst, 'reload schema';
+
+----------------------------------------------------------------
+ORTE & NOTIZEN — Erweiterung (Migration für bestehende Datenbanken)
+Einmal im SQL Editor ausführen, danach Seite neu laden.
+----------------------------------------------------------------
+
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS place_category TEXT DEFAULT 'Sehenswürdigkeit';
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN DEFAULT FALSE;
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+UPDATE sights AS s SET sort_order = sq.rn FROM (
+  SELECT id,
+    ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY updated_at DESC NULLS LAST) - 1 AS rn
+  FROM sights
+) AS sq WHERE s.id = sq.id;
+
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS checklist_items JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE private_notes ADD COLUMN IF NOT EXISTS checklist_items JSONB DEFAULT '[]'::jsonb;
 
 NOTIFY pgrst, 'reload schema';
 
@@ -137,6 +158,9 @@ CREATE TABLE sights (
   note TEXT DEFAULT '',
   visited BOOLEAN DEFAULT FALSE,
   visited_by UUID REFERENCES auth.users(id),
+  place_category TEXT DEFAULT 'Sehenswürdigkeit',
+  is_favorite BOOLEAN DEFAULT FALSE,
+  sort_order INTEGER DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -169,6 +193,7 @@ CREATE TABLE notes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trip_id UUID REFERENCES trips(id) ON DELETE CASCADE NOT NULL UNIQUE,
   content TEXT DEFAULT '',
+  checklist_items JSONB DEFAULT '[]'::jsonb,
   updated_by UUID REFERENCES auth.users(id),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -180,6 +205,7 @@ CREATE TABLE private_notes (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   title TEXT DEFAULT '',
   content TEXT DEFAULT '',
+  checklist_items JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -705,6 +731,38 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .sight-by{font-size:11px;color:var(--green);font-weight:600;margin-top:3px;}
 .sight-map-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .sight-map-row a{font-size:12px;font-weight:600;}
+.sight-item.sight-dragging{opacity:0.55;}
+.sight-item-fav{border-color:rgba(245,158,11,0.45);background:rgba(245,158,11,0.06);}
+.sight-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;}
+.sight-drag-handle,.sight-nudge-btn{
+  touch-action:manipulation;
+  flex-shrink:0;width:36px;height:36px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg);cursor:grab;
+  display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--text-2);
+}
+.sight-drag-handle:active{cursor:grabbing;}
+.sight-nudge-wrap{display:flex;flex-direction:column;gap:2px;}
+.sight-nudge-btn{width:34px;height:28px;font-size:12px;padding:0;}
+.sight-cat-select{font-size:13px;padding:6px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card);color:var(--text);max-width:100%;}
+.sight-fav-star{
+  border:none;background:transparent;font-size:20px;line-height:1;cursor:pointer;padding:4px;border-radius:var(--radius-sm);
+}
+.sight-fav-star.on{filter:none;}
+.sight-fav-star.off{opacity:0.35;}
+
+.notes-checklist-block{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.notes-checklist-head{font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:8px;}
+.note-check-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;}
+.note-check-input{margin-top:4px;flex-shrink:0;}
+.note-check-text{flex:1;min-width:0;}
+.note-check-remove{flex-shrink:0;border:none;background:transparent;opacity:0.55;cursor:pointer;font-size:16px;line-height:1;padding:6px;}
+
+.attachment-item-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;}
+.attachment-item-inner{display:flex;align-items:flex-start;gap:10px;}
+.attachment-preview{margin-top:10px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);background:var(--bg);}
+.attachment-preview img{display:block;width:100%;max-height:220px;object-fit:contain;background:#f8faf9;}
+:root[data-theme="dark"] .attachment-preview img{background:#111;}
+.attachment-preview-pdf iframe{width:100%;height:min(320px,50vh);border:none;display:block;}
 
 .role-badge{
   display:inline-flex;align-items:center;gap:4px;
@@ -814,11 +872,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 }
 
 /* ── Attachments ── */
-.attachments-list{display:flex;flex-direction:column;gap:8px;}
+.attachments-list{display:flex;flex-direction:column;gap:10px;}
 .attachment-item{
   display:flex;align-items:center;gap:10px;
-  background:var(--card);border:1px solid var(--border);
-  border-radius:var(--radius-md);padding:10px 12px;
 }
 .attachment-icon{font-size:20px;line-height:1;}
 .attachment-main{flex:1;min-width:0;}
@@ -1212,6 +1268,10 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
       <div class="card">
         <div class="card-title"><span class="icon">📍</span> Ort hinzufügen</div>
         <div class="form-group">
+          <label class="form-label">Kategorie</label>
+          <select id="sight-category" class="form-input"></select>
+        </div>
+        <div class="form-group">
           <input id="sight-name" class="form-input" type="text" placeholder="Sagrada Família">
         </div>
         <div class="form-group">
@@ -1274,6 +1334,11 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
       <div class="card">
         <div class="card-title"><span class="icon">📝</span> Gemeinsame Notizen</div>
         <textarea id="notes-content" class="form-input" rows="8" placeholder="Hier eure gemeinsamen Notizen, Ideen, Pläne..." oninput="onNotesInput()"></textarea>
+        <div id="shared-checklist-block" class="notes-checklist-block">
+          <div class="notes-checklist-head">Checkliste</div>
+          <div id="shared-checklist-list"></div>
+          <button type="button" class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addSharedChecklistRow()">+ Listenpunkt</button>
+        </div>
         <div id="notes-meta" class="notes-meta"></div>
       </div>
       <div class="card" style="border-color:rgba(139,92,246,0.35);background:linear-gradient(180deg,rgba(139,92,246,0.06),var(--card));">
@@ -1486,6 +1551,10 @@ const S = {
   lastCollabToastMsg: '',
 };
 
+const SIGHT_PLACE_CATEGORIES = ['Restaurant', 'Sehenswürdigkeit', 'Bahnhof', 'Hotel', 'Strand', 'Bar'];
+const SIGHT_DEFAULT_CATEGORY = 'Sehenswürdigkeit';
+let sightDragId = null;
+
 // ================================================================
 // SUPABASE INIT
 // ================================================================
@@ -1498,6 +1567,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // ================================================================
 async function init() {
   applyTheme();
+  fillSightCategorySelect();
   applyJoinFromUrl();
   renderTips();
   const recoveryMode = isRecoveryMode();
@@ -2693,8 +2763,122 @@ async function deletePackItem(id) {
 // ================================================================
 // SIGHTS
 // ================================================================
+function fillSightCategorySelect() {
+  const sel = document.getElementById('sight-category');
+  if (!sel) return;
+  sel.innerHTML = SIGHT_PLACE_CATEGORIES.map((c) => {
+    const safe = escAttr(c);
+    return `<option value="${safe}">${esc(c)}</option>`;
+  }).join('');
+  sel.value = SIGHT_DEFAULT_CATEGORY;
+}
+
+function sortSightSubset(arr) {
+  return [...arr].sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+}
+
+async function persistSightOrderArray(ordered) {
+  if (!ordered.length) return;
+  suppressCollaborationToast(2200);
+  const ts = new Date().toISOString();
+  const updates = ordered.map((s, idx) =>
+    sb.from('sights').update({ sort_order: idx, updated_at: ts }).eq('id', s.id)
+  );
+  const results = await Promise.all(updates);
+  const failed = results.find(r => r.error);
+  if (failed?.error) {
+    toast(failed.error.message, 'error');
+    await loadSights();
+    return;
+  }
+  ordered.forEach((s, idx) => {
+    const x = S.sights.find((z) => z.id === s.id);
+    if (x) x.sort_order = idx;
+  });
+  renderSights();
+}
+
+async function normalizeSightOrderFull() {
+  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
+  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
+  await persistSightOrderArray([...active, ...visited]);
+}
+
+async function normalizeSightOrdersAfterToggle(changedId, nowVisited) {
+  const activeSans = sortSightSubset(S.sights.filter((s) => !s.visited && s.id !== changedId));
+  const visitedSans = sortSightSubset(S.sights.filter((s) => s.visited && s.id !== changedId));
+  const item = S.sights.find((s) => s.id === changedId);
+  if (!item) return;
+  let ordered;
+  if (nowVisited) ordered = [...activeSans, ...visitedSans, item];
+  else ordered = [...activeSans, item, ...visitedSans];
+  await persistSightOrderArray(ordered);
+}
+
+async function reorderSightZone(zone, orderedIdsInZone) {
+  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
+  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
+  let newActive;
+  let newVisited;
+  if (zone === 'active') {
+    newActive = orderedIdsInZone.map((id) => S.sights.find((s) => s.id === id)).filter(Boolean);
+    newVisited = visited;
+  } else {
+    newActive = active;
+    newVisited = orderedIdsInZone.map((id) => S.sights.find((s) => s.id === id)).filter(Boolean);
+  }
+  await persistSightOrderArray([...newActive, ...newVisited]);
+}
+
+function sightDragStart(ev, id) {
+  sightDragId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', id);
+  const row = document.getElementById(`si-${id}`);
+  if (row) row.classList.add('sight-dragging');
+}
+
+function sightDragEnd(ev, id) {
+  const row = document.getElementById(`si-${id}`);
+  if (row) row.classList.remove('sight-dragging');
+}
+
+function sightDragOver(ev) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+}
+
+async function sightDropOnRow(ev, zone, targetId) {
+  ev.preventDefault();
+  if (!sightDragId || sightDragId === targetId) return;
+  const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
+  const ids = subset.map((s) => s.id);
+  const from = ids.indexOf(sightDragId);
+  const to = ids.indexOf(targetId);
+  if (from === -1 || to === -1) return;
+  const next = [...ids];
+  next.splice(from, 1);
+  const insAt = next.indexOf(targetId);
+  next.splice(insAt, 0, sightDragId);
+  sightDragId = null;
+  await reorderSightZone(zone, next);
+}
+
+async function sightNudge(id, zone, delta) {
+  const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
+  const ids = subset.map((s) => s.id);
+  const idx = ids.indexOf(id);
+  const j = idx + delta;
+  if (idx < 0 || j < 0 || j >= ids.length) return;
+  const next = [...ids];
+  const t = next[j];
+  next[j] = next[idx];
+  next[idx] = t;
+  await reorderSightZone(zone, next);
+}
+
 async function loadSights() {
-  const { data } = await sb.from('sights').select('*').eq('trip_id', S.trip.id).order('updated_at');
+  const { data } = await sb.from('sights').select('*').eq('trip_id', S.trip.id).order('sort_order');
   S.sights = data || [];
   renderSights();
 }
@@ -2717,32 +2901,56 @@ function sightMapsLinksHtml(s) {
   </div>`;
 }
 
+function sightCategoryOptionsHtml(selectedRaw) {
+  const selected = SIGHT_PLACE_CATEGORIES.includes(selectedRaw) ? selectedRaw : SIGHT_DEFAULT_CATEGORY;
+  return SIGHT_PLACE_CATEGORIES.map((c) => `<option value="${escAttr(c)}"${c === selected ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
+
 function renderSights() {
   const el = document.getElementById('sights-list');
-  if (!S.sights.length) { el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte hinzugefügt.</p></div>`; return; }
-  const active = S.sights.filter(s => !s.visited);
-  const visited = S.sights.filter(s => s.visited);
+  if (!S.sights.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte hinzugefügt.</p></div>`;
+    return;
+  }
+  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
+  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
   let html = '';
   if (active.length) {
-    html += `<div class="card">${active.map(s => sightRow(s)).join('')}</div>`;
+    html += `<div class="card">${active.map((s) => sightRow(s, 'active')).join('')}</div>`;
   }
   if (visited.length) {
-    html += `<div class="section-title">✅ Besucht</div><div class="card">${visited.map(s => sightRow(s)).join('')}</div>`;
+    html += `<div class="section-title">✅ Besucht</div><div class="card">${visited.map((s) => sightRow(s, 'visited')).join('')}</div>`;
   }
   el.innerHTML = html;
 }
 
-function sightRow(s) {
-  const member = S.members.find(m => m.user_id === s.visited_by);
-  const by = s.visited && s.visited_by ? (member?.display_name || '') : '';
+function sightRow(s, zone) {
+  const member = S.members.find((m) => m.user_id === s.visited_by);
+  const by = s.visited && s.visited_by ? member?.display_name || '' : '';
   const maps = sightMapsLinksHtml(s);
-  return `<div class="sight-item${s.visited?' visited':''}" id="si-${s.id}">
-    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited?'✓':''}</div>
+  const fav = !!s.is_favorite;
+  const catSel = sightCategoryOptionsHtml(s.place_category);
+  const favCls = fav ? ' on' : ' off';
+  const favTitle = fav ? 'Favorit entfernen' : 'Als Favorit markieren';
+  const rowCls = `sight-item${s.visited ? ' visited' : ''}${fav ? ' sight-item-fav' : ''}`;
+  return `<div class="${rowCls}" id="si-${s.id}" data-sight-id="${s.id}"
+    ondragover="sightDragOver(event)" ondrop="sightDropOnRow(event,'${zone}','${s.id}')">
+    <div class="sight-nudge-wrap" aria-hidden="true">
+      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',-1)" title="Nach oben">↑</button>
+      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',1)" title="Nach unten">↓</button>
+    </div>
+    <div class="sight-drag-handle" draggable="true" title="Ziehen zum Sortieren"
+      ondragstart="sightDragStart(event,'${s.id}')" ondragend="sightDragEnd(event,'${s.id}')">⠿</div>
+    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
     <div class="sight-info">
+      <div class="sight-toolbar">
+        <select class="sight-cat-select" aria-label="Kategorie" onchange="updateSightCategory('${s.id}',this.value)">${catSel}</select>
+        <button type="button" class="sight-fav-star${favCls}" onclick="toggleSightFavorite('${s.id}')" title="${escAttr(favTitle)}">${fav ? '★' : '☆'}</button>
+      </div>
       <div class="sight-name">${esc(s.name)}</div>
-      ${s.note?`<div class="sight-note">${esc(s.note)}</div>`:''}
+      ${s.note ? `<div class="sight-note">${esc(s.note)}</div>` : ''}
       ${maps}
-      ${by?`<div class="sight-by">Besucht von ${esc(by)}</div>`:''}
+      ${by ? `<div class="sight-by">Besucht von ${esc(by)}</div>` : ''}
     </div>
     <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
   </div>`;
@@ -2751,30 +2959,92 @@ function sightRow(s) {
 async function addSight() {
   suppressCollaborationToast(1600);
   const name = v('sight-name');
-  if (!name) { toast('Bitte Namen eingeben','error'); return; }
+  if (!name) {
+    toast('Bitte Namen eingeben', 'error');
+    return;
+  }
   const note = v('sight-note');
-  const { data, error } = await sb.from('sights').insert({ trip_id: S.trip.id, name, note }).select().single();
-  if (error) { toast(error.message,'error'); return; }
+  let cat = v('sight-category') || SIGHT_DEFAULT_CATEGORY;
+  if (!SIGHT_PLACE_CATEGORIES.includes(cat)) cat = SIGHT_DEFAULT_CATEGORY;
+  const nextSort = Math.max(-1, ...S.sights.map((x) => Number(x.sort_order) || 0)) + 1;
+  const { data, error } = await sb
+    .from('sights')
+    .insert({
+      trip_id: S.trip.id,
+      name,
+      note,
+      place_category: cat,
+      is_favorite: false,
+      sort_order: nextSort,
+    })
+    .select()
+    .single();
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
   S.sights.push(data);
-  set('sight-name',''); set('sight-note','');
+  set('sight-name', '');
+  set('sight-note', '');
+  fillSightCategorySelect();
+  await normalizeSightOrderFull();
+}
+
+async function updateSightCategory(id, place_category) {
+  let cat = place_category;
+  if (!SIGHT_PLACE_CATEGORIES.includes(cat)) cat = SIGHT_DEFAULT_CATEGORY;
+  suppressCollaborationToast(1600);
+  const { error } = await sb.from('sights').update({ place_category: cat, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  const s = S.sights.find((x) => x.id === id);
+  if (s) s.place_category = cat;
+  renderSights();
+}
+
+async function toggleSightFavorite(id) {
+  const s = S.sights.find((x) => x.id === id);
+  if (!s) return;
+  const next = !s.is_favorite;
+  suppressCollaborationToast(1600);
+  const { error } = await sb.from('sights').update({ is_favorite: next, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  s.is_favorite = next;
   renderSights();
 }
 
 async function toggleSight(id, visited) {
   suppressCollaborationToast(1600);
-  const { error } = await sb.from('sights').update({ visited, visited_by: visited ? S.user.id : null, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) { toast(error.message,'error'); return; }
-  const s = S.sights.find(x => x.id === id);
-  if (s) { s.visited = visited; s.visited_by = visited ? S.user.id : null; }
-  renderSights();
+  const { error } = await sb
+    .from('sights')
+    .update({ visited, visited_by: visited ? S.user.id : null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  const s = S.sights.find((x) => x.id === id);
+  if (s) {
+    s.visited = visited;
+    s.visited_by = visited ? S.user.id : null;
+  }
+  await normalizeSightOrdersAfterToggle(id, visited);
 }
 
 async function deleteSight(id) {
   suppressCollaborationToast(1600);
   const { error } = await sb.from('sights').delete().eq('id', id);
-  if (error) { toast(error.message,'error'); return; }
-  S.sights = S.sights.filter(x => x.id !== id);
-  renderSights();
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  S.sights = S.sights.filter((x) => x.id !== id);
+  await normalizeSightOrderFull();
 }
 
 // ================================================================
@@ -2931,6 +3201,36 @@ async function saveBudgetLimit() {
   toast('Persönliches Budget-Limit gesetzt ✓','success');
 }
 
+function newChecklistId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cl-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function normalizeChecklistItems(raw) {
+  if (raw == null || raw === '') return [];
+  let arr = raw;
+  if (typeof raw === 'string') {
+    try {
+      arr = JSON.parse(raw);
+    } catch (_) {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => ({
+    id: item && item.id ? String(item.id) : newChecklistId(),
+    text: item && item.text != null ? String(item.text) : '',
+    checked: !!(item && item.checked),
+  }));
+}
+
+function notesEditorHasFocus() {
+  const a = document.activeElement;
+  if (!a) return false;
+  if (a.id === 'notes-content') return true;
+  if (a.closest && a.closest('#shared-checklist-list')) return true;
+  return false;
+}
+
 // ================================================================
 // NOTES
 // ================================================================
@@ -2939,7 +3239,10 @@ const privateNoteTimers = {};
 
 function privateNoteFieldHasFocus(id) {
   const a = document.activeElement;
-  return !!(a && (a.id === `pn-title-${id}` || a.id === `pn-body-${id}`));
+  if (!a) return false;
+  if (a.id === `pn-title-${id}` || a.id === `pn-body-${id}`) return true;
+  if (a.closest && a.closest(`[data-note-id="${id}"]`) && a.closest('.private-note-checklist')) return true;
+  return false;
 }
 
 async function loadNotes() {
@@ -2950,11 +3253,15 @@ async function loadNotes() {
   S.notes = data;
   if (data) {
     set('notes-content', data.content || '');
+    data.checklist_items = normalizeChecklistItems(data.checklist_items);
+    S.notes = data;
     renderNotesMeta();
+    renderSharedChecklistUI();
   } else {
     set('notes-content', '');
     const nm = document.getElementById('notes-meta');
     if (nm) nm.textContent = '';
+    renderSharedChecklistUI();
   }
 
   const privMsg = String(privErr?.message || privErr || '');
@@ -2976,9 +3283,100 @@ function onNotesInput() {
   notesTimer = setTimeout(saveNotes, 1000);
 }
 
+function collectSharedChecklistFromDom() {
+  const host = document.getElementById('shared-checklist-list');
+  if (!host) return [];
+  return [...host.querySelectorAll('[data-check-item-id]')].map((row) => ({
+    id: row.dataset.checkItemId,
+    text: row.querySelector('.note-check-text')?.value ?? '',
+    checked: row.querySelector('.note-check-input')?.checked ?? false,
+  }));
+}
+
+function sharedChecklistRowHtml(it) {
+  const id = escAttr(it.id);
+  const tex = esc(it.text);
+  const chk = it.checked ? ' checked' : '';
+  return `<div class="note-check-row" data-check-item-id="${id}">
+    <input type="checkbox" class="note-check-input"${chk} onchange="scheduleSharedChecklistSave()" aria-label="Erledigt" />
+    <input type="text" class="form-input note-check-text" value="${tex}" placeholder="Listenpunkt…" autocomplete="off" oninput="scheduleSharedChecklistSave()" />
+    <button type="button" class="note-check-remove" onclick="removeSharedChecklistRow('${id}')" title="Entfernen">✕</button>
+  </div>`;
+}
+
+function renderSharedChecklistUI() {
+  const host = document.getElementById('shared-checklist-list');
+  if (!host) return;
+  const items = normalizeChecklistItems(S.notes?.checklist_items);
+  host.innerHTML = items.map((it) => sharedChecklistRowHtml(it)).join('');
+}
+
+function scheduleSharedChecklistSave() {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(saveNotes, 900);
+}
+
+function removeSharedChecklistRow(itemId) {
+  const host = document.getElementById('shared-checklist-list');
+  if (!host) return;
+  const row = host.querySelector(`[data-check-item-id="${itemId}"]`);
+  if (row) row.remove();
+  scheduleSharedChecklistSave();
+}
+
+function addSharedChecklistRow() {
+  const host = document.getElementById('shared-checklist-list');
+  if (!host) return;
+  const rid = newChecklistId();
+  host.insertAdjacentHTML('beforeend', sharedChecklistRowHtml({ id: rid, text: '', checked: false }));
+  scheduleSharedChecklistSave();
+  requestAnimationFrame(() => {
+    host.querySelector(`[data-check-item-id="${rid}"] .note-check-text`)?.focus();
+  });
+}
+
 function schedulePrivateNoteSave(id) {
   clearTimeout(privateNoteTimers[id]);
   privateNoteTimers[id] = setTimeout(() => savePrivateNoteEntry(id), 900);
+}
+
+function collectPrivateChecklistFromDom(noteId) {
+  const host = document.getElementById(`pn-checklist-${noteId}`);
+  if (!host) return [];
+  return [...host.querySelectorAll('[data-check-item-id]')].map((row) => ({
+    id: row.dataset.checkItemId,
+    text: row.querySelector('.note-check-text')?.value ?? '',
+    checked: row.querySelector('.note-check-input')?.checked ?? false,
+  }));
+}
+
+function privateChecklistRowHtml(noteId, it) {
+  const id = escAttr(it.id);
+  const tex = esc(it.text);
+  const chk = it.checked ? ' checked' : '';
+  return `<div class="note-check-row" data-check-item-id="${id}">
+    <input type="checkbox" class="note-check-input"${chk} onchange="schedulePrivateNoteSave('${noteId}')" aria-label="Erledigt" />
+    <input type="text" class="form-input note-check-text" value="${tex}" placeholder="Listenpunkt…" autocomplete="off" oninput="schedulePrivateNoteSave('${noteId}')" />
+    <button type="button" class="note-check-remove" onclick="removePrivateChecklistRow('${noteId}','${id}')" title="Entfernen">✕</button>
+  </div>`;
+}
+
+function addPrivateChecklistRow(noteId) {
+  const host = document.getElementById(`pn-checklist-${noteId}`);
+  if (!host) return;
+  const rid = newChecklistId();
+  host.insertAdjacentHTML('beforeend', privateChecklistRowHtml(noteId, { id: rid, text: '', checked: false }));
+  schedulePrivateNoteSave(noteId);
+  requestAnimationFrame(() => {
+    host.querySelector(`[data-check-item-id="${rid}"] .note-check-text`)?.focus();
+  });
+}
+
+function removePrivateChecklistRow(noteId, itemId) {
+  const host = document.getElementById(`pn-checklist-${noteId}`);
+  const row = host?.querySelector(`[data-check-item-id="${itemId}"]`);
+  if (row) row.remove();
+  schedulePrivateNoteSave(noteId);
 }
 
 async function savePrivateNoteEntry(id) {
@@ -2987,10 +3385,12 @@ async function savePrivateNoteEntry(id) {
   const bodyEl = document.getElementById(`pn-body-${id}`);
   const title = titleEl ? titleEl.value.trim() : '';
   const content = bodyEl ? bodyEl.value : '';
+  const checklist_items = collectPrivateChecklistFromDom(id);
   const { data, error } = await sb.from('private_notes')
     .update({
       title,
       content,
+      checklist_items,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -3027,6 +3427,7 @@ async function addPrivateNoteEntry() {
       user_id: S.user.id,
       title: '',
       content: '',
+      checklist_items: [],
     }).select().single();
     if (error) {
       if (/relation|does not exist|schema cache|Could not find|private_notes/i.test(error.message || '')) {
@@ -3079,6 +3480,8 @@ function renderPrivateNotesList() {
     const nid = row.id;
     const tit = esc(row.title || '');
     const txt = esc(row.content || '');
+    const privItems = normalizeChecklistItems(row.checklist_items);
+    const privCheckHtml = privItems.map((it) => privateChecklistRowHtml(nid, it)).join('');
     const upd = row.updated_at
       ? new Date(row.updated_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
       : '';
@@ -3088,6 +3491,11 @@ function renderPrivateNotesList() {
         <button type="button" class="btn btn-sm btn-danger btn-icon" onclick="deletePrivateNoteEntry('${nid}')" title="Eintrag löschen">🗑️</button>
       </div>
       <textarea class="form-input" id="pn-body-${nid}" rows="4" placeholder="Text…" autocomplete="off" oninput="schedulePrivateNoteSave('${nid}')">${txt}</textarea>
+      <div class="notes-checklist-block private-note-checklist" style="margin-top:10px;">
+        <div class="notes-checklist-head">Checkliste</div>
+        <div id="pn-checklist-${nid}">${privCheckHtml}</div>
+        <button type="button" class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addPrivateChecklistRow('${nid}')">+ Listenpunkt</button>
+      </div>
       <div class="private-note-meta notes-meta" style="margin-top:6px;">${upd ? `Gespeichert · ${upd}` : ''}</div>
     </div>`;
   }).join('');
@@ -3096,10 +3504,19 @@ function renderPrivateNotesList() {
 async function saveNotes() {
   suppressCollaborationToast(2000);
   const content = v('notes-content');
-  const { error } = await sb.from('notes').upsert({ trip_id: S.trip.id, content, updated_by: S.user.id, updated_at: new Date().toISOString() }, { onConflict: 'trip_id' });
+  const checklist_items = collectSharedChecklistFromDom();
+  const row = {
+    trip_id: S.trip.id,
+    content,
+    checklist_items,
+    updated_by: S.user.id,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('notes').upsert(row, { onConflict: 'trip_id' });
   if (error) { toast(error.message,'error'); return; }
   if (!S.notes) S.notes = {};
   S.notes.content = content;
+  S.notes.checklist_items = checklist_items;
   S.notes.updated_by = S.user.id;
   S.notes.updated_at = new Date().toISOString();
   renderNotesMeta();
@@ -3547,21 +3964,32 @@ async function renderAttachments() {
     const signed = await sb.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(a.file_path, 60 * 60);
     return { ...a, signed_url: signed.data?.signedUrl || '' };
   }));
-  el.innerHTML = withUrls.map(a => {
+  el.innerHTML = withUrls.map((a) => {
     const when = new Date(a.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
     const safeName = esc(a.file_name || 'Anlage');
-    return `<div class="attachment-item">
+    const mime = String(a.mime_type || '').toLowerCase();
+    const fname = String(a.file_name || '').toLowerCase();
+    const isImg = mime.startsWith('image/');
+    const isPdf = mime.includes('pdf') || fname.endsWith('.pdf');
+    let preview = '';
+    if (a.signed_url && isImg) {
+      preview = `<div class="attachment-preview"><img src="${escAttr(a.signed_url)}" alt="" loading="lazy"></div>`;
+    } else if (a.signed_url && isPdf) {
+      preview = `<div class="attachment-preview attachment-preview-pdf"><iframe src="${escAttr(a.signed_url)}#view=FitH" title="PDF-Vorschau"></iframe></div>`;
+    }
+    return `<div class="attachment-item-wrap">
+    <div class="attachment-item-inner attachment-item">
       <div class="attachment-icon">${attachmentIcon(a.file_name || '', a.mime_type || '')}</div>
       <div class="attachment-main">
         <div class="attachment-name" title="${safeName}">${safeName}</div>
         <div class="attachment-meta">${formatBytes(a.file_size)} · ${when}</div>
       </div>
       <div class="attachment-actions">
-        ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${a.signed_url}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
+        ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${escAttr(a.signed_url)}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
         <button id="rename-attachment-${a.id}" class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
         <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
       </div>
-    </div>`;
+    </div>${preview}</div>`;
   }).join('');
 }
 
@@ -3603,8 +4031,14 @@ async function setupRealtime() {
   });
   ch.on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `trip_id=eq.${S.trip.id}` }, p => {
     if (p.new && p.new.updated_by !== S.user.id) {
+      if (notesEditorHasFocus()) {
+        notifyCollaborationUpdate('Mitgespeichert: Notizen wurden aktualisiert.');
+        return;
+      }
       S.notes = p.new;
-      set('notes-content', p.new.content);
+      if (p.new.checklist_items != null) S.notes.checklist_items = normalizeChecklistItems(p.new.checklist_items);
+      set('notes-content', p.new.content || '');
+      renderSharedChecklistUI();
       renderNotesMeta();
       notifyCollaborationUpdate('Mitgespeichert: Notizen wurden aktualisiert.');
     }
@@ -3745,7 +4179,13 @@ function handleSightRT(p) {
     if (idx >= 0) { S.sights[idx] = p.new; if (p.new.visited_by !== S.user.id) flashEl(`si-${p.new.id}`); }
     else S.sights.push(p.new);
     const otherVisit = p.new.visited_by && p.new.visited_by !== S.user.id;
-    const textChange = prev && (prev.name !== p.new.name || prev.note !== p.new.note);
+    const textChange =
+      prev &&
+      (prev.name !== p.new.name ||
+        prev.note !== p.new.note ||
+        (prev.place_category || SIGHT_DEFAULT_CATEGORY) !== (p.new.place_category || SIGHT_DEFAULT_CATEGORY) ||
+        !!prev.is_favorite !== !!p.new.is_favorite ||
+        Number(prev.sort_order ?? 0) !== Number(p.new.sort_order ?? 0));
     if (otherVisit || textChange) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
     S.sights = S.sights.filter(s => s.id !== p.old?.id);
