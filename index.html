@@ -604,6 +604,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   background:var(--card);border:1px solid var(--border);
   border-radius:var(--radius-md);padding:8px 10px;
 }
+.trip-cover-controls-panel{display:flex;flex-direction:column;gap:8px;width:100%;}
 .trip-cover-zoom .btn-icon{width:34px;height:34px;font-size:18px;line-height:1;}
 .trip-cover-zoom input{flex:1;min-width:0;accent-color:var(--green);}
 .trip-cover-zoom-value{min-width:42px;text-align:right;font-size:12px;font-weight:700;color:var(--text-2);}
@@ -1030,7 +1031,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   .trip-cover-slot{width:calc(100% + 24px);max-width:none;margin-left:-12px;margin-right:-12px;}
   .trip-cover-frame{aspect-ratio:16/9;max-height:none;border-left:none;border-right:none;border-radius:0;}
   .trip-cover-frame img{object-fit:contain;}
-  .trip-cover-actions,.trip-cover-zoom{width:calc(100% - 24px);margin-left:12px;margin-right:12px;}
+  .trip-cover-actions,.trip-cover-controls-panel{width:calc(100% - 24px);margin-left:12px;margin-right:12px;}
   .bp-code{font-size:30px;}
   .countdown-number{font-size:58px;}
   .invite-code-display{font-size:30px;letter-spacing:6px;padding:16px;}
@@ -2604,6 +2605,20 @@ function resetCoverPosition() {
   setCoverY(0);
 }
 
+function toggleTripCoverControls() {
+  const panel = document.getElementById('trip-cover-controls-panel');
+  const btn = document.getElementById('trip-cover-controls-toggle');
+  if (!panel || !btn) return;
+  const willOpen = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !willOpen);
+  btn.textContent = willOpen ? 'Bildgröße ausblenden' : 'Bildgröße ändern';
+  btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  if (willOpen) {
+    applyCoverTransform();
+    syncTripCoverFrameHeight();
+  }
+}
+
 function syncTripCoverFrameHeight() {
   requestAnimationFrame(() => {
     const frame = document.getElementById('trip-cover-frame');
@@ -2626,27 +2641,30 @@ async function renderHomeStartRow() {
   const zoom = getCoverZoom();
   const y = getCoverY();
   const zoomControls = owner && hasCover
-    ? `<div class="trip-cover-zoom">
-        <span class="trip-cover-control-label">Zoom</span>
-        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(-10)" aria-label="Bild verkleinern">−</button>
-        <input id="trip-cover-zoom" type="range" min="50" max="220" step="5" value="${zoom}" oninput="setCoverZoom(this.value)" aria-label="Bildgröße" />
-        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(10)" aria-label="Bild vergrößern">+</button>
-        <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverZoom()">100%</button>
-        <span id="trip-cover-zoom-value" class="trip-cover-zoom-value">${zoom}%</span>
-      </div>
-      <div class="trip-cover-zoom">
-        <span class="trip-cover-control-label">Höhe</span>
-        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(-5)" aria-label="Bild nach oben verschieben">↑</button>
-        <input id="trip-cover-y" type="range" min="-50" max="50" step="1" value="${y}" oninput="setCoverY(this.value)" aria-label="Bild vertikal verschieben" />
-        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(5)" aria-label="Bild nach unten verschieben">↓</button>
-        <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverPosition()">Mitte</button>
-        <span id="trip-cover-y-value" class="trip-cover-zoom-value">${y > 0 ? '+' : ''}${y}%</span>
+    ? `<div id="trip-cover-controls-panel" class="trip-cover-controls-panel hidden">
+        <div class="trip-cover-zoom">
+          <span class="trip-cover-control-label">Zoom</span>
+          <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(-10)" aria-label="Bild verkleinern">−</button>
+          <input id="trip-cover-zoom" type="range" min="50" max="220" step="5" value="${zoom}" oninput="setCoverZoom(this.value)" aria-label="Bildgröße" />
+          <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(10)" aria-label="Bild vergrößern">+</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverZoom()">100%</button>
+          <span id="trip-cover-zoom-value" class="trip-cover-zoom-value">${zoom}%</span>
+        </div>
+        <div class="trip-cover-zoom">
+          <span class="trip-cover-control-label">Höhe</span>
+          <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(-5)" aria-label="Bild nach oben verschieben">↑</button>
+          <input id="trip-cover-y" type="range" min="-50" max="50" step="1" value="${y}" oninput="setCoverY(this.value)" aria-label="Bild vertikal verschieben" />
+          <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(5)" aria-label="Bild nach unten verschieben">↓</button>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverPosition()">Mitte</button>
+          <span id="trip-cover-y-value" class="trip-cover-zoom-value">${y > 0 ? '+' : ''}${y}%</span>
+        </div>
       </div>`
     : '';
   const actions = owner
     ? `<div class="trip-cover-actions">
         <input type="file" id="trip-cover-input" class="hidden" accept="image/jpeg,image/png,image/webp" onchange="uploadTripCover(this.files)" />
         <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('trip-cover-input').click()">Bild wählen</button>
+        ${hasCover ? `<button type="button" id="trip-cover-controls-toggle" class="btn btn-sm btn-secondary" onclick="toggleTripCoverControls()" aria-expanded="false" aria-controls="trip-cover-controls-panel">Bildgröße ändern</button>` : ''}
         ${hasCover ? `<button type="button" class="btn btn-sm btn-danger" onclick="removeTripCover()">Entfernen</button>` : ''}
       </div>`
     : '';
