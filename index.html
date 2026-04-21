@@ -593,7 +593,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 }
 .trip-cover-frame img{
   width:100%;height:100%;object-fit:contain;display:block;
-  transform:scale(var(--cover-zoom, 1));transform-origin:center center;
+  transform:translateY(var(--cover-y, 0%)) scale(var(--cover-zoom, 1));transform-origin:center center;
   transition:transform .18s ease;
 }
 .trip-cover-placeholder{font-size:36px;opacity:0.45;line-height:1;}
@@ -607,6 +607,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .trip-cover-zoom .btn-icon{width:34px;height:34px;font-size:18px;line-height:1;}
 .trip-cover-zoom input{flex:1;min-width:0;accent-color:var(--green);}
 .trip-cover-zoom-value{min-width:42px;text-align:right;font-size:12px;font-weight:700;color:var(--text-2);}
+.trip-cover-control-label{min-width:44px;font-size:12px;font-weight:700;color:var(--text-2);}
 .countdown-slot{flex:1;min-width:0;display:flex;}
 .countdown-slot > .countdown-big{width:100%;margin-bottom:0;}
 
@@ -1518,6 +1519,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const ATTACHMENTS_BUCKET = 'trip-attachments';
 const THEME_STORAGE_KEY = 'urlaubsapp_theme';
 const COVER_ZOOM_STORAGE_KEY = 'urlaubsapp_cover_zoom_v1';
+const COVER_Y_STORAGE_KEY = 'urlaubsapp_cover_y_v1';
 
 // ================================================================
 // CONSTANTS
@@ -2535,36 +2537,70 @@ function clampCoverZoom(value) {
   return Math.min(220, Math.max(50, Math.round(n)));
 }
 
+function clampCoverY(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(50, Math.max(-50, Math.round(n)));
+}
+
 function coverZoomStorageKey() {
   return `${COVER_ZOOM_STORAGE_KEY}_${S.trip?.id || 'default'}`;
+}
+
+function coverYStorageKey() {
+  return `${COVER_Y_STORAGE_KEY}_${S.trip?.id || 'default'}`;
 }
 
 function getCoverZoom() {
   try { return clampCoverZoom(localStorage.getItem(coverZoomStorageKey()) || 100); } catch { return 100; }
 }
 
+function getCoverY() {
+  try { return clampCoverY(localStorage.getItem(coverYStorageKey()) || 0); } catch { return 0; }
+}
+
 function setCoverZoom(value) {
   const zoom = clampCoverZoom(value);
   try { localStorage.setItem(coverZoomStorageKey(), String(zoom)); } catch {}
-  applyCoverZoom(zoom);
+  applyCoverTransform(zoom, getCoverY());
 }
 
-function applyCoverZoom(value = getCoverZoom()) {
-  const zoom = clampCoverZoom(value);
+function setCoverY(value) {
+  const y = clampCoverY(value);
+  try { localStorage.setItem(coverYStorageKey(), String(y)); } catch {}
+  applyCoverTransform(getCoverZoom(), y);
+}
+
+function applyCoverTransform(zoomValue = getCoverZoom(), yValue = getCoverY()) {
+  const zoom = clampCoverZoom(zoomValue);
+  const y = clampCoverY(yValue);
   const frame = document.getElementById('trip-cover-frame');
-  const range = document.getElementById('trip-cover-zoom');
-  const valueEl = document.getElementById('trip-cover-zoom-value');
+  const zoomRange = document.getElementById('trip-cover-zoom');
+  const zoomValueEl = document.getElementById('trip-cover-zoom-value');
+  const yRange = document.getElementById('trip-cover-y');
+  const yValueEl = document.getElementById('trip-cover-y-value');
   if (frame) frame.style.setProperty('--cover-zoom', String(zoom / 100));
-  if (range) range.value = String(zoom);
-  if (valueEl) valueEl.textContent = `${zoom}%`;
+  if (frame) frame.style.setProperty('--cover-y', `${y}%`);
+  if (zoomRange) zoomRange.value = String(zoom);
+  if (zoomValueEl) zoomValueEl.textContent = `${zoom}%`;
+  if (yRange) yRange.value = String(y);
+  if (yValueEl) yValueEl.textContent = `${y > 0 ? '+' : ''}${y}%`;
 }
 
 function adjustCoverZoom(delta) {
   setCoverZoom(getCoverZoom() + delta);
 }
 
+function adjustCoverY(delta) {
+  setCoverY(getCoverY() + delta);
+}
+
 function resetCoverZoom() {
   setCoverZoom(100);
+}
+
+function resetCoverPosition() {
+  setCoverY(0);
 }
 
 async function renderHomeStartRow() {
@@ -2577,13 +2613,23 @@ async function renderHomeStartRow() {
   const owner = isCurrentTripOwner();
   const hasCover = !!S.trip.cover_image_path;
   const zoom = getCoverZoom();
+  const y = getCoverY();
   const zoomControls = hasCover
     ? `<div class="trip-cover-zoom">
+        <span class="trip-cover-control-label">Zoom</span>
         <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(-10)" aria-label="Bild verkleinern">−</button>
         <input id="trip-cover-zoom" type="range" min="50" max="220" step="5" value="${zoom}" oninput="setCoverZoom(this.value)" aria-label="Bildgröße" />
         <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverZoom(10)" aria-label="Bild vergrößern">+</button>
         <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverZoom()">100%</button>
         <span id="trip-cover-zoom-value" class="trip-cover-zoom-value">${zoom}%</span>
+      </div>
+      <div class="trip-cover-zoom">
+        <span class="trip-cover-control-label">Höhe</span>
+        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(-5)" aria-label="Bild nach oben verschieben">↑</button>
+        <input id="trip-cover-y" type="range" min="-50" max="50" step="1" value="${y}" oninput="setCoverY(this.value)" aria-label="Bild vertikal verschieben" />
+        <button type="button" class="btn btn-secondary btn-icon" onclick="adjustCoverY(5)" aria-label="Bild nach unten verschieben">↓</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="resetCoverPosition()">Mitte</button>
+        <span id="trip-cover-y-value" class="trip-cover-zoom-value">${y > 0 ? '+' : ''}${y}%</span>
       </div>`
     : '';
   const actions = owner
@@ -2605,7 +2651,7 @@ async function renderHomeStartRow() {
       <div class="countdown-slot">${inner}</div>
     </div>`;
   void hydrateDestinationFlags(wrap);
-  applyCoverZoom(zoom);
+  applyCoverTransform(zoom, y);
   await refreshTripCoverImg();
 }
 
