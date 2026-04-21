@@ -2031,7 +2031,7 @@ function renderTripsTab() {
       : '';
     return `<div class="trip-switch-card${active ? ' active' : ''}">
       <div class="trip-switch-main">
-        <div class="trip-switch-name">${esc(trip.name || 'Unbenannte Reise')}</div>
+        <div class="trip-switch-name">${tripNameWithFlagHtml(trip)}</div>
         <div class="trip-role-row">${roleBadge}${destination}</div>
       </div>
       <div class="trip-switch-actions">
@@ -2451,6 +2451,17 @@ function destinationWithFlagHtml(destination) {
   return `<span data-flag-destination="${escAttr(dest)}">${flag ? `${flag} ` : ''}${esc(dest)}</span>`;
 }
 
+function getTripFlagSource(trip = S.trip) {
+  return String(trip?.destination || trip?.name || '').trim();
+}
+
+function tripNameWithFlagHtml(trip) {
+  const name = String(trip?.name || 'Unbenannte Reise').trim();
+  const flagSource = getTripFlagSource(trip);
+  const flag = destinationFlagSync(flagSource);
+  return `<span data-flag-destination="${escAttr(flagSource)}">${flag ? `${flag} ` : ''}${esc(name)}</span>`;
+}
+
 async function hydrateDestinationFlags(root = document) {
   const nodes = Array.from(root.querySelectorAll('[data-flag-destination]'));
   await Promise.all(nodes.map(async (node) => {
@@ -2466,7 +2477,7 @@ function updateHeaderTripName() {
   const el = document.getElementById('header-trip-name');
   if (!el) return;
   const name = S.trip?.name || 'Urlaubsplaner';
-  const destination = S.trip?.destination || '';
+  const destination = getTripFlagSource(S.trip);
   const flag = destinationFlagSync(destination);
   el.textContent = flag ? `${flag} ${name}` : name;
   if (destination && !flag) {
