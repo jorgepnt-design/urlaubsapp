@@ -1553,6 +1553,44 @@ const WMO = {
   80:['🌧️','Leichte Schauer'],81:['🌧️','Schauer'],82:['⛈️','Starke Schauer'],
   85:['❄️','Schneeschauer'],86:['❄️','Starke Schneeschauer'],95:['⛈️','Gewitter'],96:['⛈️','Gewitter mit Hagel'],99:['⛈️','Heftiges Gewitter'],
 };
+const DESTINATION_FLAG_CACHE_KEY = 'urlaubsapp_destination_flags_v1';
+const DESTINATION_COUNTRY_HINTS = {
+  deutschland:'DE', germany:'DE', berlin:'DE', hamburg:'DE', munchen:'DE', muenchen:'DE', koln:'DE', koeln:'DE', frankfurt:'DE',
+  italien:'IT', italy:'IT', italia:'IT', rom:'IT', roma:'IT', neapel:'IT', napoli:'IT', mailand:'IT', milano:'IT', venedig:'IT', venezia:'IT', florenz:'IT', firenze:'IT', sizilien:'IT', sardinien:'IT',
+  spanien:'ES', spain:'ES', espana:'ES', barcelona:'ES', madrid:'ES', mallorca:'ES', palma:'ES', ibiza:'ES', valencia:'ES', sevilla:'ES', teneriffa:'ES', kanaren:'ES',
+  frankreich:'FR', france:'FR', paris:'FR', nizza:'FR', nice:'FR', lyon:'FR', marseille:'FR', korsika:'FR',
+  portugal:'PT', lissabon:'PT', lisboa:'PT', porto:'PT', madeira:'PT', algarve:'PT',
+  griechenland:'GR', greece:'GR', athen:'GR', athens:'GR', kreta:'GR', rhodos:'GR', kos:'GR', santorini:'GR', mykonos:'GR',
+  turkei:'TR', tuerkei:'TR', turkey:'TR', istanbul:'TR', antalya:'TR', izmir:'TR', bodrum:'TR',
+  osterreich:'AT', austria:'AT', wien:'AT', vienna:'AT', salzburg:'AT', tirol:'AT',
+  schweiz:'CH', switzerland:'CH', zurich:'CH', zuerich:'CH', genf:'CH', geneva:'CH', bern:'CH',
+  niederlande:'NL', netherlands:'NL', holland:'NL', amsterdam:'NL', rotterdam:'NL',
+  belgien:'BE', belgium:'BE', brussel:'BE', bruessel:'BE', brugge:'BE',
+  kroatien:'HR', croatia:'HR', dubrovnik:'HR', split:'HR', zagreb:'HR',
+  grossbritannien:'GB', greatbritain:'GB', england:'GB', uk:'GB', london:'GB', schottland:'GB', edinburgh:'GB',
+  irland:'IE', ireland:'IE', dublin:'IE',
+  danemark:'DK', daenemark:'DK', denmark:'DK', kopenhagen:'DK', copenhagen:'DK',
+  schweden:'SE', sweden:'SE', stockholm:'SE', goteborg:'SE', goeteborg:'SE',
+  norwegen:'NO', norway:'NO', oslo:'NO', bergen:'NO',
+  finnland:'FI', finland:'FI', helsinki:'FI',
+  polen:'PL', poland:'PL', warschau:'PL', warsaw:'PL', krakau:'PL', krakow:'PL',
+  tschechien:'CZ', czechia:'CZ', prag:'CZ', prague:'CZ',
+  ungarn:'HU', hungary:'HU', budapest:'HU',
+  usa:'US', amerika:'US', 'vereinigte staaten':'US', newyork:'US', 'new york':'US', losangeles:'US', 'los angeles':'US', miami:'US', lasvegas:'US', 'las vegas':'US',
+  kanada:'CA', canada:'CA', toronto:'CA', vancouver:'CA', montreal:'CA',
+  mexiko:'MX', mexico:'MX', cancun:'MX', tulum:'MX',
+  thailand:'TH', bangkok:'TH', phuket:'TH', kohsamui:'TH', 'koh samui':'TH',
+  japan:'JP', tokio:'JP', tokyo:'JP', kyoto:'JP', osaka:'JP',
+  china:'CN', peking:'CN', beijing:'CN', shanghai:'CN',
+  australien:'AU', australia:'AU', sydney:'AU', melbourne:'AU',
+  neuseeland:'NZ', newzealand:'NZ', 'new zealand':'NZ', auckland:'NZ',
+  agypten:'EG', aegypten:'EG', egypt:'EG', kairo:'EG', cairo:'EG', hurghada:'EG', sharmelsheikh:'EG', 'sharm el sheikh':'EG',
+  marokko:'MA', morocco:'MA', marrakesch:'MA', marrakech:'MA',
+  vereinigtearabischeemirate:'AE', dubai:'AE', abudhabi:'AE', 'abu dhabi':'AE',
+  indonesien:'ID', indonesia:'ID', bali:'ID', jakarta:'ID',
+  malediven:'MV', maldives:'MV',
+  dominikanischerepublik:'DO', dominicana:'DO', puntacana:'DO', 'punta cana':'DO'
+};
 
 // ================================================================
 // STATE
@@ -1774,7 +1812,7 @@ async function loadUserTrip() {
 async function loadAllData() {
   if (!S.trip) return;
   resetTripScopedState();
-  document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+  updateHeaderTripName();
   updateInviteUi();
   fillTripForm();
   await Promise.all([
@@ -1983,7 +2021,7 @@ function renderTripsTab() {
     const roleBadge = isOwnerMember
       ? `<span class="role-badge" title="Du bist Ersteller dieser Reise">👑 Owner</span>`
       : `<span class="role-badge member" title="Du bist Mitglied dieser Reise">Mitglied</span>`;
-    const destination = trip.destination ? `<span class="trip-switch-meta"> · ${esc(trip.destination)}</span>` : '';
+    const destination = trip.destination ? `<span class="trip-switch-meta"> · ${destinationWithFlagHtml(trip.destination)}</span>` : '';
     const canDelete = trip.user_id === S.user.id;
     const deleteBtn = canDelete
       ? `<button class="btn btn-sm btn-danger" onclick="deleteTrip('${trip.id}')">Löschen</button>`
@@ -2003,6 +2041,7 @@ function renderTripsTab() {
       </div>
     </div>`;
   }).join('');
+  void hydrateDestinationFlags(el);
 }
 
 async function deleteTrip(tripId) {
@@ -2147,8 +2186,9 @@ async function saveTrip() {
     const { error } = await sb.from('trips').update(upd).eq('id', S.trip.id);
     if (error) { toast(error.message,'error'); return; }
     Object.assign(S.trip, upd);
-    document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+    updateHeaderTripName();
     updateCountdown();
+    renderTripsTab();
     toast('Gespeichert ✓','success');
   });
 }
@@ -2339,6 +2379,105 @@ function copyInviteCode() {
   navigator.clipboard.writeText(code).then(() => toast('Code kopiert! 📋','success'));
 }
 
+function normalizeDestinationText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function countryCodeToFlag(code) {
+  const cc = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return '';
+  return [...cc].map(ch => String.fromCodePoint(127397 + ch.charCodeAt(0))).join('');
+}
+
+function readDestinationFlagCache() {
+  try { return JSON.parse(localStorage.getItem(DESTINATION_FLAG_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+
+function writeDestinationFlagCache(cache) {
+  try { localStorage.setItem(DESTINATION_FLAG_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
+function inferDestinationCountryCode(destination) {
+  const normalized = ` ${normalizeDestinationText(destination)} `;
+  if (!normalized.trim()) return '';
+  const entries = Object.entries(DESTINATION_COUNTRY_HINTS).sort((a, b) => b[0].length - a[0].length);
+  for (const [hint, code] of entries) {
+    const needle = ` ${normalizeDestinationText(hint)} `;
+    if (needle.trim() && normalized.includes(needle)) return code;
+  }
+  return '';
+}
+
+function getCachedDestinationCountryCode(destination) {
+  const key = normalizeDestinationText(destination);
+  if (!key) return '';
+  return readDestinationFlagCache()[key] || '';
+}
+
+function destinationFlagSync(destination) {
+  return countryCodeToFlag(inferDestinationCountryCode(destination) || getCachedDestinationCountryCode(destination));
+}
+
+async function resolveDestinationCountryCode(destination) {
+  const key = normalizeDestinationText(destination);
+  if (!key) return '';
+  const inferred = inferDestinationCountryCode(destination);
+  if (inferred) return inferred;
+  const cache = readDestinationFlagCache();
+  if (cache[key]) return cache[key];
+  try {
+    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(destination)}&count=1&language=de`);
+    const data = await res.json();
+    const code = data.results?.[0]?.country_code || '';
+    if (code) {
+      cache[key] = code;
+      writeDestinationFlagCache(cache);
+      return code;
+    }
+  } catch {}
+  return '';
+}
+
+function destinationWithFlagHtml(destination) {
+  const dest = String(destination || '').trim();
+  if (!dest) return '';
+  const flag = destinationFlagSync(dest);
+  return `<span data-flag-destination="${escAttr(dest)}">${flag ? `${flag} ` : ''}${esc(dest)}</span>`;
+}
+
+async function hydrateDestinationFlags(root = document) {
+  const nodes = Array.from(root.querySelectorAll('[data-flag-destination]'));
+  await Promise.all(nodes.map(async (node) => {
+    const destination = node.getAttribute('data-flag-destination') || '';
+    if (!destination) return;
+    const code = await resolveDestinationCountryCode(destination);
+    const flag = countryCodeToFlag(code);
+    if (flag) node.textContent = `${flag} ${destination}`;
+  }));
+}
+
+function updateHeaderTripName() {
+  const el = document.getElementById('header-trip-name');
+  if (!el) return;
+  const name = S.trip?.name || 'Urlaubsplaner';
+  const destination = S.trip?.destination || '';
+  const flag = destinationFlagSync(destination);
+  el.textContent = flag ? `${flag} ${name}` : name;
+  if (destination && !flag) {
+    resolveDestinationCountryCode(destination).then((code) => {
+      if (S.trip?.destination !== destination) return;
+      const resolvedFlag = countryCodeToFlag(code);
+      if (resolvedFlag) el.textContent = `${resolvedFlag} ${S.trip?.name || 'Urlaubsplaner'}`;
+    });
+  }
+}
+
 function buildCountdownInnerHtml() {
   if (!S.trip?.departure_date) {
     return `<div class="countdown-big countdown-big--nodate">
@@ -2350,7 +2489,7 @@ function buildCountdownInnerHtml() {
   const dep = new Date(S.trip.departure_date);
   const today = new Date(); today.setHours(0,0,0,0);
   const diff = Math.ceil((dep - today) / 86400000);
-  const dest = esc(S.trip.destination || '');
+  const dest = destinationWithFlagHtml(S.trip.destination || '');
   if (diff < 0) {
     return `<div class="countdown-big"><div class="countdown-number">✈️</div><div class="countdown-label">Reise läuft!</div><div class="countdown-sub">${dest}</div></div>`;
   }
@@ -2393,6 +2532,7 @@ async function renderHomeStartRow() {
       </aside>
       <div class="countdown-slot">${inner}</div>
     </div>`;
+  void hydrateDestinationFlags(wrap);
   await refreshTripCoverImg();
 }
 
@@ -3405,7 +3545,7 @@ async function fetchWeather(city) {
     const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de`);
     const geoData = await geoRes.json();
     if (!geoData.results?.length) { el.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">🔍</div><p>Stadt nicht gefunden.</p></div></div>`; return; }
-    const { latitude, longitude, name, country } = geoData.results[0];
+    const { latitude, longitude, name, country, country_code } = geoData.results[0];
     const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=8`);
     const wx = await wxRes.json();
     const cur = wx.current;
@@ -3425,7 +3565,7 @@ async function fetchWeather(city) {
         <div class="weather-emoji">${emoji}</div>
         <div class="weather-temp">${temp}°C</div>
         <div class="weather-desc">${desc}</div>
-        <div class="weather-city-name">📍 ${name}, ${country}</div>
+        <div class="weather-city-name">📍 ${countryCodeToFlag(country_code)} ${name}, ${country}</div>
       </div>
       <div class="section-title">7-Tage-Vorschau</div>
       <div class="forecast-row">${forecastHtml}</div>`;
@@ -4435,7 +4575,8 @@ async function setupRealtime() {
       renderSightCustomCategoriesManage();
       renderSights();
       updateCountdown();
-      document.getElementById('header-trip-name').textContent = S.trip.name || 'Urlaubsplaner';
+      updateHeaderTripName();
+      renderTripsTab();
       updateInviteUi();
       if (p.eventType === 'UPDATE') notifyCollaborationUpdate('Mitgespeichert: Reisedaten wurden aktualisiert.');
     }
