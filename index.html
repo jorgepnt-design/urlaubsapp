@@ -1760,6 +1760,19 @@ function readFirstValue(ids) {
   return '';
 }
 
+function formatTripDateRange(start, end) {
+  const fmt = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('de-DE');
+  };
+  const from = fmt(start);
+  const to = fmt(end);
+  if (from && to) return `${from} - ${to}`;
+  return from || to || '';
+}
+
 function resetTripScopedState() {
   S.members = [];
   S.onlineUsers = [];
@@ -2038,6 +2051,8 @@ function renderTripsTab() {
       ? `<span class="role-badge" title="Du bist Ersteller dieser Reise">👑 Owner</span>`
       : `<span class="role-badge member" title="Du bist Mitglied dieser Reise">Mitglied</span>`;
     const destination = trip.destination ? `<span class="trip-switch-meta"> · ${destinationWithFlagHtml(trip.destination)}</span>` : '';
+    const dateRange = formatTripDateRange(trip.departure_date, trip.return_date);
+    const dateMeta = dateRange ? `<span class="trip-switch-meta"> · ${esc(dateRange)}</span>` : '';
     const canDelete = trip.user_id === S.user.id;
     const deleteBtn = canDelete
       ? `<button class="btn btn-sm btn-danger" onclick="deleteTrip('${trip.id}')">Löschen</button>`
@@ -2048,7 +2063,7 @@ function renderTripsTab() {
     return `<div class="trip-switch-card${active ? ' active' : ''}">
       <div class="trip-switch-main">
         <div class="trip-switch-name">${tripNameWithFlagHtml(trip)}</div>
-        <div class="trip-role-row">${roleBadge}${destination}</div>
+        <div class="trip-role-row">${roleBadge}${destination}${dateMeta}</div>
       </div>
       <div class="trip-switch-actions">
         <button class="btn ${active ? 'btn-secondary' : 'btn-primary'}" ${active ? 'disabled' : ''} onclick="switchTrip('${trip.id}')">${active ? 'Aktiv' : 'Öffnen'}</button>
