@@ -4662,11 +4662,59 @@ async function renderAttachments() {
       <div class="attachment-actions">
         ${a.signed_url ? `<a class="btn btn-sm btn-secondary" href="${escAttr(a.signed_url)}" target="_blank" rel="noopener">Öffnen</a>` : `<button class="btn btn-sm btn-secondary" disabled>Öffnen</button>`}
         ${vorschauBtn}
+        <button class="btn btn-sm btn-primary" onclick="shareAttachment('${a.id}')">⬆ Teilen</button>
         <button id="rename-attachment-${a.id}" class="btn btn-sm btn-secondary" onclick="renameAttachment('${a.id}')">Umbenennen</button>
         <button class="btn btn-sm btn-danger" onclick="removeAttachment('${a.id}')">Löschen</button>
       </div>
     </div><div id="att-preview-slot-${a.id}" class="attachment-preview-slot hidden"></div></div>`;
   }).join('');
+}
+
+async function shareAttachment(attId) {
+  const att = S.attachments.find(a => a.id === attId);
+  if (!att) return;
+  showSpinner();
+  try {
+    // Frische signierte URL holen
+    const { data } = await sb.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(att.file_path, 3600);
+    const signedUrl = data?.signedUrl;
+    if (!signedUrl) { toast('Datei nicht verfügbar', 'error'); return; }
+
+    // 1. Versuche: Datei als File-Objekt teilen (iOS native Share Sheet mit Datei-Anhang)
+    if (navigator.canShare) {
+      try {
+        const response = await fetch(signedUrl);
+        const blob = await response.blob();
+        const file = new File([blob], att.file_name || 'Anlage', { type: att.mime_type || blob.type });
+        if (navigator.canShare({ files: [file] })) {
+          hideSpinner();
+          await navigator.share({ files: [file], title: att.file_name || 'Anlage' });
+          return;
+        }
+      } catch (fetchErr) {
+        // Weiter zum Fallback
+      }
+    }
+
+    // 2. Fallback: URL teilen (funktioniert auf allen Geräten)
+    if (navigator.share) {
+      hideSpinner();
+      await navigator.share({
+        title: att.file_name || 'Anlage',
+        text: `Anlage aus deinem Urlaubsplaner: ${att.file_name || ''}`,
+        url: signedUrl
+      });
+      return;
+    }
+
+    // 3. Letzter Fallback: Link in Zwischenablage kopieren
+    hideSpinner();
+    await navigator.clipboard.writeText(signedUrl);
+    toast('Link kopiert! 📋 (Teilen nicht unterstützt)', 'success');
+  } catch (e) {
+    hideSpinner();
+    if (e.name !== 'AbortError') toast('Teilen fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 // ================================================================
