@@ -254,13 +254,21 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- RPC: Join trip by invite code
 CREATE OR REPLACE FUNCTION join_trip_by_code(p_invite_code TEXT, p_display_name TEXT)
-RETURNS UUID AS $$
-DECLARE v_trip_id UUID;
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_trip_id UUID;
+  v_user_id UUID;
 BEGIN
-  SELECT id INTO v_trip_id FROM trips WHERE invite_code = upper(p_invite_code);
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN RAISE EXCEPTION 'Nicht eingeloggt'; END IF;
+  SELECT id INTO v_trip_id FROM trips WHERE upper(invite_code) = upper(p_invite_code) LIMIT 1;
   IF v_trip_id IS NULL THEN RAISE EXCEPTION 'Ungültiger Einladungscode'; END IF;
   INSERT INTO trip_members (trip_id, user_id, display_name, role)
-  VALUES (v_trip_id, auth.uid(), p_display_name, 'member')
+  VALUES (v_trip_id, v_user_id, p_display_name, 'member')
   ON CONFLICT (trip_id, user_id) DO UPDATE SET display_name = p_display_name;
   RETURN v_trip_id;
 END;
@@ -2026,15 +2034,17 @@ async function joinFromHome() {
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   if (!code) { toast('Bitte Code eingeben','error'); return; }
   let rpcErr = null;
+  let joinedTripId = null;
   await runWithSpinner(async () => {
-    const { error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: emailToName(S.user.email) });
+    const { data: tripId, error } = await sb.rpc('join_trip_by_code', { p_invite_code: code, p_display_name: emailToName(S.user.email) });
     rpcErr = error;
+    joinedTripId = tripId;
   });
-  if (rpcErr) { toast('Ungültiger Code','error'); return; }
-  toast('Beigetreten! 🎉','success');
-  document.getElementById('join-code').value = '';
+  if (rpcErr || !joinedTripId) { toast('Ungültiger Code — bitte prüfe ob du eingeloggt bist und der Code korrekt ist.','error'); return; }
+  toast('Beigetreten! 🎉 Reise wird geladen…','success');
+  if (document.getElementById('join-code')) document.getElementById('join-code').value = '';
   await loadUserTrips();
-  await loadMembers();
+  await switchTrip(joinedTripId);
 }
 
 function renderTripsTab() {
