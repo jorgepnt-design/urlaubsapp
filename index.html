@@ -1180,6 +1180,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <div class="trip-name" id="header-trip-name">Urlaubsplaner</div>
     <div class="header-right">
       <div class="online-avatars" id="online-avatars"></div>
+      <button type="button" class="btn-logout" onclick="refreshAppData()">Aktualisieren</button>
       <button type="button" class="btn-header-icon" onclick="openSettings()" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
       <button class="btn-logout" onclick="logout()">Logout</button>
     </div>
@@ -1754,6 +1755,34 @@ async function afterLogin() {
     setupRealtime();
     updateCountdown();
   }
+}
+
+async function refreshAppData() {
+  if (!S.user) {
+    location.reload();
+    return;
+  }
+  const activeTab = document.querySelector('.nav-item.active')?.getAttribute('data-tab') || 'home';
+  await runWithSpinner(async () => {
+    await loadUserTrips();
+    if (!S.trips.length) {
+      S.trip = null;
+      setStoredActiveTripId(null);
+      hide('app');
+      show('trip-setup-screen');
+      return;
+    }
+
+    const currentTripId = S.trip?.id || getStoredActiveTripId();
+    const refreshedTrip = S.trips.find(t => t.id === currentTripId) || S.trips[0];
+    S.trip = refreshedTrip;
+    setStoredActiveTripId(refreshedTrip.id);
+
+    await loadAllData();
+    await setupRealtime();
+    showTab(activeTab);
+    toast('Aktualisiert', 'success');
+  });
 }
 
 function activeTripStorageKey() {
