@@ -1461,12 +1461,16 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         </div>
       </div>
       <div id="attachments-import-card" class="card hidden">
-        <div class="card-title"><span class="icon">📂</span> Anlagen aus anderen Reisen übernehmen</div>
-        <p style="font-size:13px;color:var(--text-2);margin-bottom:10px;">
-          Als Reise-Owner kannst du vorhandene Anlagen aus deinen anderen Reisen auswählen und in diese Reise kopieren.
-        </p>
-        <div id="attachments-import-list" class="attachment-import-list"></div>
-        <button id="attachments-import-btn" class="btn btn-secondary btn-full" style="margin-top:12px" onclick="importSelectedAttachments()">Ausgewählte Anlagen übernehmen</button>
+        <details class="pack-cat-fold">
+          <summary><span>📂 Anlagen aus anderen Reisen übernehmen</span><span id="attachments-import-count" style="opacity:0.75;font-weight:600;"></span></summary>
+          <div class="pack-cat-body">
+            <p style="font-size:13px;color:var(--text-2);margin:0 0 10px;">
+              Als Reise-Owner kannst du vorhandene Anlagen aus deinen anderen Reisen auswählen und in diese Reise kopieren.
+            </p>
+            <div id="attachments-import-list" class="attachment-import-list"></div>
+            <button id="attachments-import-btn" class="btn btn-secondary btn-full" style="margin-top:12px" onclick="importSelectedAttachments()">Ausgewählte Anlagen übernehmen</button>
+          </div>
+        </details>
       </div>
       <div class="card">
         <div class="card-title"><span class="icon">🗂️</span> Deine Anlagen</div>
