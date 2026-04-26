@@ -932,6 +932,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .trip-switch-name{font-size:15px;font-weight:700;color:var(--text);}
 .trip-switch-meta{font-size:12px;color:var(--text-2);margin-top:3px;}
 .trip-switch-actions{display:flex;flex-shrink:0;flex-wrap:wrap;gap:8px;justify-content:flex-end;}
+.pack-reuse-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.pack-reuse-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 10px;border-radius:999px;
+  background:var(--green-light);border:1px solid rgba(29,158,117,0.22);
+  color:var(--green-dark);font-size:12px;font-weight:700;
+}
+.pack-reuse-btn .meta{font-size:11px;font-weight:600;opacity:0.78;}
 .attachment-import-list{display:flex;flex-direction:column;gap:8px;}
 .attachment-import-item{
   display:flex;align-items:flex-start;gap:10px;
@@ -1632,6 +1640,7 @@ const S = {
   onlineUsers: [],
   packLists: [],
   packItems: [],
+  packReuseItems: [],
   activePackListId: null,
   sights: [],
   budgetItems: [],
@@ -1792,6 +1801,7 @@ function resetTripScopedState() {
   S.onlineUsers = [];
   S.packLists = [];
   S.packItems = [];
+  S.packReuseItems = [];
   S.activePackListId = null;
   S.sights = [];
   S.budgetItems = [];
@@ -2974,10 +2984,51 @@ async function loadPackData() {
   S.packLists = lists || [];
   const { data: items } = await sb.from('pack_items').select('*').eq('trip_id', S.trip.id);
   S.packItems = items || [];
+  await loadReusablePackItems();
   if (S.packLists.length > 0 && !S.activePackListId) {
     S.activePackListId = S.packLists[0].id;
   }
   renderPackTab();
+}
+
+function packItemReuseKey(name, category) {
+  return `${String(category || '').trim().toLowerCase()}::${String(name || '').trim().toLowerCase()}`;
+}
+
+async function loadReusablePackItems() {
+  const { data: ownedLists, error: listsError } = await sb
+    .from('pack_lists')
+    .select('id, trip_id')
+    .eq('owner_user_id', S.user.id);
+  if (listsError || !ownedLists?.length) {
+    S.packReuseItems = [];
+    return;
+  }
+  const listIds = ownedLists.map(list => list.id);
+  const { data: items, error: itemsError } = await sb
+    .from('pack_items')
+    .select('name, category, pack_list_id')
+    .in('pack_list_id', listIds);
+  if (itemsError || !items?.length) {
+    S.packReuseItems = [];
+    return;
+  }
+
+  const listTripMap = Object.fromEntries(ownedLists.map(list => [list.id, list.trip_id]));
+  const reusableMap = new Map();
+  for (const item of items) {
+    const key = packItemReuseKey(item.name, item.category);
+    if (!item.name || reusableMap.has(key)) continue;
+    reusableMap.set(key, {
+      name: item.name,
+      category: item.category || 'Sonstiges',
+      source_trip_id: listTripMap[item.pack_list_id] || null,
+    });
+  }
+  S.packReuseItems = Array.from(reusableMap.values()).sort((a, b) =>
+    String(a.category).localeCompare(String(b.category), 'de') ||
+    String(a.name).localeCompare(String(b.name), 'de')
+  );
 }
 
 function renderPackTab() {
@@ -3021,6 +3072,10 @@ function renderPackListContent() {
   if (!list) { el.innerHTML = ''; return; }
   const isOwner = list.owner_user_id === S.user.id;
   const items = S.packItems.filter(i => i.pack_list_id === list.id);
+  const existingKeys = new Set(items.map(i => packItemReuseKey(i.name, i.category)));
+  const reusableItems = S.packReuseItems
+    .filter(item => !existingKeys.has(packItemReuseKey(item.name, item.category)))
+    .slice(0, 24);
   const total = items.length;
   const done = items.filter(i => i.checked).length;
   const pct = total ? Math.round(done/total*100) : 0;
@@ -3047,6 +3102,16 @@ function renderPackListContent() {
     html += `<button class="btn btn-primary" style="flex:1" onclick="addPackItem()">Hinzufügen</button>`;
     html += `<button class="btn btn-secondary" onclick="addDefaultItems('${list.id}')">Vorschläge</button>`;
     html += `</div></div>`;
+    if (reusableItems.length) {
+      html += `<div class="card">`;
+      html += `<div class="card-title">FrÃ¼here Artikel</div>`;
+      html += `<div style="font-size:13px;color:var(--text-2);margin-top:-4px;">Aus deinen bisherigen Packlisten fÃ¼r diese Reise wiederverwenden.</div>`;
+      html += `<div class="pack-reuse-list">`;
+      reusableItems.forEach(item => {
+        html += `<button type="button" class="pack-reuse-btn" onclick="reusePackItemFromButton(this)" data-name="${escAttr(item.name)}" data-category="${escAttr(item.category)}"><span>${esc(item.name)}</span><span class="meta">${esc(item.category)}</span></button>`;
+      });
+      html += `</div></div>`;
+    }
   }
 
   if (!items.length) {
@@ -3124,6 +3189,7 @@ async function addPackItem() {
   const { data, error } = await sb.from('pack_items').insert({ pack_list_id: S.activePackListId, trip_id: S.trip.id, name, category }).select().single();
   if (error) { toast(error.message,'error'); return; }
   S.packItems.push(data);
+  rememberReusablePackItem(data.name, data.category);
   set('new-item-name', '');
   renderPackTab();
 }
@@ -3135,9 +3201,41 @@ async function addDefaultItems(listId) {
     const { data, error } = await sb.from('pack_items').insert(rows).select();
     if (error) { toast(error.message,'error'); return; }
     S.packItems.push(...data);
+    data.forEach(item => rememberReusablePackItem(item.name, item.category));
     renderPackTab();
     toast('Vorschläge hinzugefügt ✓','success');
   });
+}
+
+function rememberReusablePackItem(name, category) {
+  const key = packItemReuseKey(name, category);
+  if (!name || S.packReuseItems.some(item => packItemReuseKey(item.name, item.category) === key)) return;
+  S.packReuseItems.push({ name, category: category || 'Sonstiges', source_trip_id: S.trip?.id || null });
+  S.packReuseItems.sort((a, b) =>
+    String(a.category).localeCompare(String(b.category), 'de') ||
+    String(a.name).localeCompare(String(b.name), 'de')
+  );
+}
+
+async function reusePackItem(name, category) {
+  suppressCollaborationToast(1600);
+  const { data, error } = await sb.from('pack_items').insert({
+    pack_list_id: S.activePackListId,
+    trip_id: S.trip.id,
+    name,
+    category,
+  }).select().single();
+  if (error) { toast(error.message,'error'); return; }
+  S.packItems.push(data);
+  rememberReusablePackItem(data.name, data.category);
+  renderPackTab();
+}
+
+function reusePackItemFromButton(btn) {
+  if (!btn) return;
+  const name = btn.getAttribute('data-name') || '';
+  const category = btn.getAttribute('data-category') || 'Sonstiges';
+  void reusePackItem(name, category);
 }
 
 async function togglePackItem(id, checked) {
