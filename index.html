@@ -3104,13 +3104,15 @@ function renderPackListContent() {
     html += `</div></div>`;
     if (reusableItems.length) {
       html += `<div class="card">`;
-      html += `<div class="card-title">Frühere Artikel</div>`;
-      html += `<div style="font-size:13px;color:var(--text-2);margin-top:-4px;">Aus deinen bisherigen Packlisten für diese Reise wiederverwenden.</div>`;
+      html += `<details class="pack-cat-fold">`;
+      html += `<summary><span>Frühere Artikel</span><span style="opacity:0.75;font-weight:600;">${reusableItems.length}</span></summary>`;
+      html += `<div class="pack-cat-body">`;
+      html += `<div style="font-size:13px;color:var(--text-2);margin:0 0 10px;">Aus deinen bisherigen Packlisten für diese Reise wiederverwenden.</div>`;
       html += `<div class="pack-reuse-list">`;
       reusableItems.forEach(item => {
         html += `<button type="button" class="pack-reuse-btn" onclick="reusePackItemFromButton(this)" data-name="${escAttr(item.name)}" data-category="${escAttr(item.category)}"><span>${esc(item.name)}</span><span class="meta">${esc(item.category)}</span></button>`;
       });
-      html += `</div></div>`;
+      html += `</div></div></details></div>`;
     }
   }
 
