@@ -747,6 +747,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .sight-item:last-child{border-bottom:none;}
 .sight-item.visited{opacity:0.55;}
 .sight-item.visited .sight-name{text-decoration:line-through;}
+.sight-actions{
+  display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;
+}
 .sight-check{
   width:28px;height:28px;border-radius:50%;flex-shrink:0;
   border:2px solid var(--border);
@@ -1054,6 +1057,17 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   .trip-cover-frame{aspect-ratio:16/9;max-height:none;border-left:none;border-right:none;border-radius:0;}
   .trip-cover-frame img{object-fit:contain;}
   .trip-cover-actions,.trip-cover-controls-panel{width:calc(100% - 24px);margin-left:12px;margin-right:12px;}
+  .sight-item{display:grid;grid-template-columns:36px 36px minmax(0,1fr);grid-template-areas:
+    "nudge drag check"
+    "info info info"
+    "edit edit delete";row-gap:8px;column-gap:10px;}
+  .sight-item > .sight-nudge-wrap{grid-area:nudge;}
+  .sight-item > .sight-drag-handle{grid-area:drag;}
+  .sight-item > .sight-check{grid-area:check;}
+  .sight-item > .sight-info{grid-area:info;}
+  .sight-actions{grid-area:edit;display:flex;flex-direction:row;align-items:center;justify-content:space-between;width:100%;}
+  .sight-actions .btn{white-space:nowrap;}
+  .sight-actions .item-del{margin-left:auto;}
   .bp-code{font-size:30px;}
   .countdown-number{font-size:58px;}
   .invite-code-display{font-size:30px;letter-spacing:6px;padding:16px;}
@@ -3740,8 +3754,10 @@ function sightRow(s, zone) {
       ${maps}
       ${by ? `<div class="sight-by">Besucht von ${esc(by)}</div>` : ''}
     </div>
-    <button class="btn btn-sm btn-secondary" onclick="editSight('${s.id}')">Bearbeiten</button>
-    <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
+    <div class="sight-actions">
+      <button class="btn btn-sm btn-secondary" onclick="editSight('${s.id}')">Bearbeiten</button>
+      <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
+    </div>
   </div>`;
 }
 
