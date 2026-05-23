@@ -3740,6 +3740,7 @@ function sightRow(s, zone) {
       ${maps}
       ${by ? `<div class="sight-by">Besucht von ${esc(by)}</div>` : ''}
     </div>
+    <button class="btn btn-sm btn-secondary" onclick="editSight('${s.id}')">Bearbeiten</button>
     <button class="item-del" onclick="deleteSight('${s.id}')">✕</button>
   </div>`;
 }
@@ -3820,6 +3821,35 @@ async function toggleSight(id, visited) {
     s.visited_by = visited ? S.user.id : null;
   }
   await normalizeSightOrdersAfterToggle(id, visited);
+}
+
+async function editSight(id) {
+  const sight = S.sights.find((x) => x.id === id);
+  if (!sight) return;
+  const nextName = prompt('Ort bearbeiten - Name:', sight.name || '');
+  if (nextName === null) return;
+  const name = nextName.trim();
+  if (!name) {
+    toast('Bitte Namen eingeben', 'error');
+    return;
+  }
+  const nextNote = prompt('Ort bearbeiten - Notiz:', sight.note || '');
+  if (nextNote === null) return;
+  const note = nextNote.trim();
+
+  suppressCollaborationToast(1600);
+  const { error } = await sb
+    .from('sights')
+    .update({ name, note, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  sight.name = name;
+  sight.note = note;
+  renderSights();
+  toast('Ort aktualisiert', 'success');
 }
 
 async function deleteSight(id) {
