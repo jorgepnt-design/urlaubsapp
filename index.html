@@ -3701,19 +3701,16 @@ function sightMapQueryKey(s) {
   return normalizeDestinationText(sightMapsSearchQuery(s));
 }
 
-function sightMapEmbedUrl(lat, lon) {
-  const span = 0.012;
-  const left = lon - span;
-  const right = lon + span;
-  const top = lat + span;
-  const bottom = lat - span;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lon}`;
+function sightMapEmbedUrl(query) {
+  const enc = encodeURIComponent(query);
+  return `https://www.google.com/maps?q=${enc}&z=15&output=embed`;
 }
 
 function sightMapPreviewHtml(s) {
   const q = sightMapsSearchQuery(s).trim();
   if (!q) return '';
-  return `<div class="sight-map-preview-wrap"><a class="sight-map-preview" href="#" onclick="return false" data-sight-preview-id="${escAttr(s.id)}"><div class="sight-map-preview-placeholder"><div class="icon">📍</div><div>Karte lädt</div></div></a></div>`;
+  const gUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  return `<div class="sight-map-preview-wrap"><a class="sight-map-preview" href="${escAttr(gUrl)}" target="_blank" rel="noopener noreferrer" data-sight-preview-id="${escAttr(s.id)}"><iframe src="${escAttr(sightMapEmbedUrl(q))}" loading="lazy" title="Karte für ${escAttr(s.name || 'Ort')}"></iframe></a></div>`;
 }
 
 async function resolveSightMapPreview(s) {
@@ -3738,23 +3735,18 @@ async function resolveSightMapPreview(s) {
 
 async function hydrateSightMapPreviews() {
   const nodes = Array.from(document.querySelectorAll('[data-sight-preview-id]'));
-  await Promise.all(nodes.map(async (node) => {
+  nodes.forEach((node) => {
     const sightId = node.getAttribute('data-sight-preview-id');
     const sight = S.sights.find((x) => x.id === sightId);
     if (!sight) return;
     const q = sightMapsSearchQuery(sight).trim();
     const enc = encodeURIComponent(q);
-    const openUrl = `https://www.openstreetmap.org/search?query=${enc}`;
+    const openUrl = `https://www.google.com/maps/search/?api=1&query=${enc}`;
     node.setAttribute('href', openUrl);
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
-    const resolved = await resolveSightMapPreview(sight);
-    if (!resolved) {
-      node.innerHTML = '<div class="sight-map-preview-placeholder"><div class="icon">📍</div><div>Karte öffnen</div></div>';
-      return;
-    }
-    node.innerHTML = `<iframe src="${escAttr(sightMapEmbedUrl(resolved.latitude, resolved.longitude))}" loading="lazy" title="Karte für ${escAttr(sight.name || 'Ort')}"></iframe>`;
-  }));
+    node.innerHTML = `<iframe src="${escAttr(sightMapEmbedUrl(q))}" loading="lazy" title="Karte für ${escAttr(sight.name || 'Ort')}"></iframe>`;
+  });
 }
 function sightMapsLinksHtml(s) {
   const q = sightMapsSearchQuery(s).trim();
