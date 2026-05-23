@@ -3675,6 +3675,20 @@ function sightMapsSearchQuery(s) {
   return parts.join(', ');
 }
 
+function sightMapSearchCandidates(s) {
+  const candidates = [
+    [s?.name, S.trip?.destination],
+    [s?.name, S.trip?.hotel_address],
+    [s?.name, S.trip?.hotel],
+    [s?.name, s?.note, S.trip?.destination],
+    [s?.name, s?.note],
+    [s?.name],
+  ]
+    .map((parts) => parts.filter(Boolean).join(', ').trim())
+    .filter(Boolean);
+  return [...new Set(candidates)];
+}
+
 function readSightMapCache() {
   try { return JSON.parse(localStorage.getItem(SIGHT_MAP_CACHE_KEY) || '{}'); } catch { return {}; }
 }
@@ -3707,18 +3721,19 @@ async function resolveSightMapPreview(s) {
   if (!key) return null;
   const cache = readSightMapCache();
   if (cache[key]) return cache[key];
-  try {
-    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(sightMapsSearchQuery(s))}&count=1&language=de`);
-    const data = await res.json();
-    const row = data.results?.[0];
-    if (!row || !Number.isFinite(row.latitude) || !Number.isFinite(row.longitude)) return null;
-    const resolved = { latitude: row.latitude, longitude: row.longitude };
-    cache[key] = resolved;
-    writeSightMapCache(cache);
-    return resolved;
-  } catch {
-    return null;
+  for (const query of sightMapSearchCandidates(s)) {
+    try {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=de`);
+      const data = await res.json();
+      const row = data.results?.[0];
+      if (!row || !Number.isFinite(row.latitude) || !Number.isFinite(row.longitude)) continue;
+      const resolved = { latitude: row.latitude, longitude: row.longitude };
+      cache[key] = resolved;
+      writeSightMapCache(cache);
+      return resolved;
+    } catch {}
   }
+  return null;
 }
 
 async function hydrateSightMapPreviews() {
@@ -3727,18 +3742,20 @@ async function hydrateSightMapPreviews() {
     const sightId = node.getAttribute('data-sight-preview-id');
     const sight = S.sights.find((x) => x.id === sightId);
     if (!sight) return;
-    const resolved = await resolveSightMapPreview(sight);
-    if (!resolved) return;
     const q = sightMapsSearchQuery(sight).trim();
     const enc = encodeURIComponent(q);
     const openUrl = `https://www.openstreetmap.org/search?query=${enc}`;
     node.setAttribute('href', openUrl);
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
+    const resolved = await resolveSightMapPreview(sight);
+    if (!resolved) {
+      node.innerHTML = '<div class="sight-map-preview-placeholder"><div class="icon">📍</div><div>Karte öffnen</div></div>';
+      return;
+    }
     node.innerHTML = `<iframe src="${escAttr(sightMapEmbedUrl(resolved.latitude, resolved.longitude))}" loading="lazy" title="Karte für ${escAttr(sight.name || 'Ort')}"></iframe>`;
   }));
 }
-
 function sightMapsLinksHtml(s) {
   const q = sightMapsSearchQuery(s).trim();
   if (!q) return '';
