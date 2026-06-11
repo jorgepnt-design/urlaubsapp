@@ -91,6 +91,14 @@ ALTER TABLE sights ADD COLUMN IF NOT EXISTS place_category TEXT DEFAULT 'Sehensw
 ALTER TABLE sights ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN DEFAULT FALSE;
 ALTER TABLE sights ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
 
+----------------------------------------------------------------
+TAGESPLANUNG — Orte einzelnen Reisetagen zuordnen
+Einmal im SQL Editor ausführen, danach Seite neu laden:
+----------------------------------------------------------------
+
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS planned_day DATE;
+NOTIFY pgrst, 'reload schema';
+
 UPDATE sights AS s SET sort_order = sq.rn FROM (
   SELECT id,
     ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY updated_at DESC NULLS LAST) - 1 AS rn
@@ -408,11 +416,6 @@ html[data-theme="dark"] body{
   background: rgba(22, 28, 25, 0.94);
   border-bottom-color: var(--border);
 }
-:root[data-theme="dark"] .btn-logout{
-  background: var(--card);
-  border-color: var(--border);
-  color: var(--text-2);
-}
 :root[data-theme="dark"] #bottom-nav{
   background: rgba(22, 28, 25, 0.96);
   border-top-color: var(--border);
@@ -438,9 +441,15 @@ html[data-theme="dark"] body{
 }
 :root[data-theme="dark"] .login-card .form-label{color:var(--text-2);}
 :root[data-theme="dark"] .toast{background:#252e2a;}
+:root[data-theme="dark"] .seg-btn.active{background:#222b27;box-shadow:none;}
+:root[data-theme="dark"] .more-item{background:#0f1613;}
+:root[data-theme="dark"] .more-item.active{background:var(--green-light);}
+:root[data-theme="dark"] .stat-card{background:var(--card);}
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{-webkit-text-size-adjust:100%;}
 html,body{height:100%;overflow:hidden;background:radial-gradient(circle at 20% -10%, #f7fbf9 0%, var(--bg) 55%);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:16px;color:var(--text);}
+button:focus-visible,a:focus-visible,select:focus-visible,input[type="checkbox"]:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:4px;}
 input,textarea,select,button{font-family:inherit;font-size:inherit;}
 button{cursor:pointer;border:none;background:none;}
 
@@ -463,7 +472,7 @@ button{cursor:pointer;border:none;background:none;}
 }
 #app-header .trip-name{font-weight:700;font-size:17px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #app-header .header-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.online-avatars{display:flex;gap:-4px;}
+.online-avatars{display:flex;}
 .online-avatar{
   width:30px;height:30px;border-radius:50%;
   background:var(--green);color:#fff;
@@ -477,12 +486,6 @@ button{cursor:pointer;border:none;background:none;}
   position:absolute;bottom:0;right:0;
   width:8px;height:8px;border-radius:50%;
   background:#22C55E;border:1.5px solid #fff;
-}
-.btn-logout{
-  background:#fff;border:1px solid var(--border);
-  color:var(--text-2);font-size:13px;font-weight:600;
-  padding:6px 12px;border-radius:var(--radius-sm);
-  white-space:nowrap;
 }
 .btn-header-icon{
   width:40px;height:40px;border-radius:var(--radius-sm);
@@ -530,28 +533,115 @@ button{cursor:pointer;border:none;background:none;}
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
   border-top:1px solid var(--border);
-  display:flex;overflow-x:auto;
-  -webkit-overflow-scrolling:touch;
-  scrollbar-width:none;z-index:200;
+  display:flex;z-index:200;
   padding-bottom:var(--safe-bottom);
 }
-#bottom-nav::-webkit-scrollbar{display:none;}
 .nav-item{
-  flex:1 0 70px;
+  flex:1 1 0;min-width:0;
   display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-  gap:3px;padding:8px 4px 4px;
-  color:var(--text-2);font-size:10px;font-weight:600;
-  letter-spacing:0.3px;border:none;background:none;
+  gap:3px;padding:7px 2px 4px;
+  color:var(--text-2);font-size:11px;font-weight:600;
+  letter-spacing:0.2px;border:none;background:none;
   transition:color .2s;
   height:var(--nav-h);
-  min-width:60px;
 }
-.nav-item .nav-icon{font-size:22px;line-height:1;}
-.nav-item.active{color:var(--green);}
+.nav-item .nav-icon{
+  font-size:21px;line-height:1;
+  padding:4px 16px;border-radius:9999px;
+  transition:background .2s;
+}
+.nav-item.active{color:var(--green-dark);}
+.nav-item.active .nav-icon{background:var(--green-light);}
+
+/* ── "Mehr"-Sheet ── */
+.more-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+}
+.more-item{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 6px;border-radius:var(--radius-md);
+  background:var(--bg);border:1px solid var(--border);
+  font-size:12px;font-weight:600;color:var(--text);
+  min-height:74px;transition:border-color .2s, background .2s;
+}
+.more-item .more-icon{font-size:24px;line-height:1;}
+.more-item.active{border-color:var(--green);background:var(--green-light);color:var(--green-dark);}
+
+/* ── Home Quick-Stats ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+.stat-card{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-md);padding:12px 4px 10px;
+  box-shadow:var(--shadow);min-width:0;
+}
+.stat-card .stat-icon{font-size:18px;line-height:1.2;}
+.stat-card .stat-value{font-size:16px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.stat-card .stat-label{font-size:10px;font-weight:600;color:var(--text-2);letter-spacing:0.2px;}
+
+/* ── Chips & Segment-Toggle ── */
+.chip-row{display:flex;gap:8px;overflow-x:auto;padding:2px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.chip-row::-webkit-scrollbar{display:none;}
+.chip{
+  flex:0 0 auto;padding:8px 14px;border-radius:9999px;
+  font-size:13px;font-weight:600;min-height:36px;
+  background:var(--card);border:1.5px solid var(--border);
+  color:var(--text-2);white-space:nowrap;transition:all .2s;
+}
+.chip.active{background:var(--green);border-color:var(--green);color:#fff;}
+.seg-toggle{
+  display:flex;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius-md);padding:3px;gap:3px;margin-bottom:10px;
+}
+.seg-btn{
+  flex:1;padding:9px 10px;border-radius:9px;
+  font-size:14px;font-weight:600;color:var(--text-2);
+  min-height:40px;transition:all .2s;
+}
+.seg-btn.active{background:var(--card);color:var(--green-dark);box-shadow:0 1px 4px rgba(16,24,40,0.10);}
+.filter-hint{font-size:12px;color:var(--text-2);margin-top:8px;line-height:1.4;}
+
+/* ── Tagesplan ── */
+.day-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow);
+  padding:12px 14px;margin-bottom:10px;
+}
+.day-card-unassigned{border-style:dashed;background:transparent;box-shadow:none;}
+.day-head{
+  display:flex;align-items:center;gap:8px;
+  padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px;
+}
+.day-num{
+  font-size:12px;font-weight:800;color:var(--green-dark);
+  background:var(--green-light);padding:3px 10px;border-radius:9999px;white-space:nowrap;
+}
+.day-date{font-size:14px;font-weight:700;color:var(--text);flex:1;min-width:0;}
+.day-count{font-size:12px;font-weight:600;color:var(--text-2);white-space:nowrap;}
+.day-empty{font-size:13px;color:var(--text-2);padding:10px 0 6px;font-style:italic;}
+.day-row{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.day-row:last-child{border-bottom:none;}
+.day-row.visited{opacity:0.55;}
+.day-row.visited .day-row-name{text-decoration:line-through;}
+.day-row-main{flex:1;min-width:0;}
+.day-row-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.day-row-meta{font-size:12px;color:var(--text-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.day-row .sight-cat-select{flex-shrink:0;max-width:96px;}
+
+/* ── Einklappbare Karten ── */
+details.fold-card > summary{list-style:none;cursor:pointer;user-select:none;}
+details.fold-card > summary::-webkit-details-marker{display:none;}
+details.fold-card > summary .fold-arrow{
+  margin-left:auto;font-size:13px;opacity:0.5;transition:transform .2s;
+}
+details.fold-card[open] > summary .fold-arrow{transform:rotate(-180deg);}
+details.fold-card:not([open]) > summary.card-title{margin-bottom:0;}
 
 /* ── Cards ── */
-.card{background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:16px;margin-bottom:12px;}
-.card{border:1px solid rgba(255,255,255,0.85);}
+.card{background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:16px;margin-bottom:12px;border:1px solid var(--border);}
 .card-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .card-title .icon{font-size:18px;}
 
@@ -1059,6 +1149,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 .info-value{font-size:14px;font-weight:600;text-align:right;}
 .hidden{display:none!important;}
 
+/* ── Desktop: Inhalt zentrieren ── */
+@media (min-width: 900px){
+  .tab-content{max-width:780px;margin-left:auto;margin-right:auto;width:100%;}
+  #app-header{padding:0 24px;}
+  #bottom-nav{justify-content:center;}
+  #bottom-nav .nav-item{max-width:140px;}
+}
+
 /* ── Responsive Polish ── */
 @media (max-width: 640px){
   .tab-content{padding:12px 12px 24px;}
@@ -1087,7 +1185,6 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   .invite-code-display{font-size:30px;letter-spacing:6px;padding:16px;}
   #app-header{padding:0 12px;}
   #app-header .trip-name{font-size:16px;}
-  .btn-logout{padding:6px 10px;font-size:12px;}
 
   .attachment-item{
     display:grid;
@@ -1208,9 +1305,8 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <div class="trip-name" id="header-trip-name">Urlaubsplaner</div>
     <div class="header-right">
       <div class="online-avatars" id="online-avatars"></div>
-      <button type="button" class="btn-logout" onclick="refreshAppData()">Aktualisieren</button>
+      <button type="button" class="btn-header-icon" onclick="refreshAppData()" title="Aktualisieren" aria-label="Daten aktualisieren">↻</button>
       <button type="button" class="btn-header-icon" onclick="openSettings()" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
-      <button class="btn-logout" onclick="logout()">Logout</button>
     </div>
   </header>
 
@@ -1218,8 +1314,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
     <!-- TAB 1: HOME -->
     <div id="tab-home" class="tab-content active">
       <div id="countdown-wrap"></div>
-      <div class="card">
-        <div class="card-title"><span class="icon">🗺️</span> Reisedaten</div>
+      <div id="home-stats"></div>
+      <details class="card fold-card" id="trip-data-fold" open>
+        <summary class="card-title"><span class="icon">🗺️</span> Reisedaten <span class="fold-arrow">▾</span></summary>
         <div class="form-group">
           <label class="form-label">Reisename</label>
           <input id="t-name" class="form-input" type="text" placeholder="Sommerurlaub Barcelona">
@@ -1247,9 +1344,9 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
           <input id="t-addr" class="form-input" type="text" placeholder="Carrer de la Marina 19-21">
         </div>
         <button class="btn btn-primary btn-full" onclick="saveTrip()">Speichern ✓</button>
-      </div>
-      <div class="card">
-        <div class="card-title"><span class="icon">🔗</span> Einladung</div>
+      </details>
+      <details class="card fold-card" id="invite-fold">
+        <summary class="card-title"><span class="icon">🔗</span> Einladung &amp; Mitreisende einladen <span class="fold-arrow">▾</span></summary>
         <p style="font-size:13px;color:var(--text-2);margin-bottom:8px;">Lade andere zur Reise ein:</p>
         <div id="invite-code-display" class="invite-code-display">------</div>
         <button class="btn btn-secondary btn-full" onclick="copyInviteCode()" style="margin-bottom:12px">📋 Code kopieren</button>
@@ -1268,7 +1365,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
           <input id="join-code" class="form-input" type="text" placeholder="Code eingeben" maxlength="6" style="text-transform:uppercase;letter-spacing:3px;font-weight:700;">
           <button class="btn btn-secondary" onclick="joinFromHome()">Beitreten</button>
         </div>
-      </div>
+      </details>
       <div class="card">
         <div class="card-title"><span class="icon">👥</span> Mitreisende</div>
         <div id="members-list" class="members-list"></div>
@@ -1357,8 +1454,8 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         </div>
         <button class="btn btn-primary btn-full" onclick="addSight()">Hinzufügen</button>
       </div>
-      <div class="card">
-        <div class="card-title"><span class="icon">🏷️</span> Eigene Orts-Kategorien</div>
+      <details class="card fold-card">
+        <summary class="card-title"><span class="icon">🏷️</span> Eigene Orts-Kategorien <span class="fold-arrow">▾</span></summary>
         <p style="font-size:13px;color:var(--text-2);margin:-4px 0 10px;line-height:1.45;">
           Hier kannst du zusätzliche Kategorien anlegen (z.&nbsp;B. „Museum“, „Tankstelle“). Sie gelten nur für diese Reise und können bearbeitet oder gelöscht werden. Gelöschte Kategorien werden bei betroffenen Orten durch „Andere“ ersetzt.
         </p>
@@ -1367,13 +1464,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
           <button type="button" class="btn btn-secondary" onclick="addSightCustomCategory()">Hinzufügen</button>
         </div>
         <div id="sight-custom-categories-list"></div>
-      </div>
+      </details>
       <div class="card sight-filter-card">
-        <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label" for="sight-filter-category">Nach Kategorie filtern</label>
-          <p style="font-size:12px;color:var(--text-2);margin:0 0 8px;line-height:1.4;">„Alle“ zeigt jeden Ort. Bei einem anderen Filter sind Ziehen und ↑/↓ zum Sortieren ausgeschaltet.</p>
-          <select id="sight-filter-category" class="form-input" onchange="onSightFilterChange()"></select>
+        <div class="seg-toggle" role="tablist" aria-label="Ansicht wählen">
+          <button type="button" id="sight-view-list" class="seg-btn active" onclick="setSightView('list')">📋 Liste</button>
+          <button type="button" id="sight-view-days" class="seg-btn" onclick="setSightView('days')">📅 Tagesplan</button>
         </div>
+        <div id="sight-filter-chips" class="chip-row"></div>
+        <p id="sight-filter-hint" class="filter-hint">Sortieren (Ziehen / ↑↓) ist nur bei Filter „Alle“ aktiv.</p>
       </div>
       <div id="sights-list"></div>
     </div>
@@ -1539,17 +1637,27 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   <!-- Bottom Navigation -->
   <nav id="bottom-nav">
     <button class="nav-item active" onclick="showTab('home')" data-tab="home"><span class="nav-icon">🏠</span>Start</button>
-    <button class="nav-item" onclick="showTab('flights')" data-tab="flights"><span class="nav-icon">✈️</span>Flüge</button>
-    <button class="nav-item" onclick="showTab('packing')" data-tab="packing"><span class="nav-icon">🧳</span>Packliste</button>
     <button class="nav-item" onclick="showTab('sights')" data-tab="sights"><span class="nav-icon">📍</span>Orte</button>
-    <button class="nav-item" onclick="showTab('weather')" data-tab="weather"><span class="nav-icon">🌤️</span>Wetter</button>
+    <button class="nav-item" onclick="showTab('packing')" data-tab="packing"><span class="nav-icon">🧳</span>Packen</button>
     <button class="nav-item" onclick="showTab('budget')" data-tab="budget"><span class="nav-icon">💰</span>Budget</button>
-    <button class="nav-item" onclick="showTab('notes')" data-tab="notes"><span class="nav-icon">📝</span>Notizen</button>
-    <button class="nav-item" onclick="showTab('emergency')" data-tab="emergency"><span class="nav-icon">🆘</span>Notfall</button>
-    <button class="nav-item" onclick="showTab('attachments')" data-tab="attachments"><span class="nav-icon">📎</span>Anlagen</button>
-    <button class="nav-item" onclick="showTab('trips')" data-tab="trips"><span class="nav-icon">🧳</span>Reisen</button>
+    <button class="nav-item" id="nav-more-btn" onclick="toggleMoreSheet()" aria-haspopup="dialog"><span class="nav-icon">⋯</span>Mehr</button>
   </nav>
 </div><!-- /app -->
+
+<div id="more-overlay" class="settings-overlay hidden" onclick="if(event.target===this)closeMoreSheet()">
+  <div class="settings-sheet" role="dialog" aria-labelledby="more-title" onclick="event.stopPropagation()">
+    <div id="more-title" class="settings-sheet-title">Mehr</div>
+    <div class="more-grid">
+      <button type="button" class="more-item" data-tab="flights" onclick="showTab('flights')"><span class="more-icon">✈️</span>Flüge</button>
+      <button type="button" class="more-item" data-tab="notes" onclick="showTab('notes')"><span class="more-icon">📝</span>Notizen</button>
+      <button type="button" class="more-item" data-tab="attachments" onclick="showTab('attachments')"><span class="more-icon">📎</span>Anlagen</button>
+      <button type="button" class="more-item" data-tab="weather" onclick="showTab('weather')"><span class="more-icon">🌤️</span>Wetter</button>
+      <button type="button" class="more-item" data-tab="emergency" onclick="showTab('emergency')"><span class="more-icon">🆘</span>Notfall</button>
+      <button type="button" class="more-item" data-tab="trips" onclick="showTab('trips')"><span class="more-icon">🧭</span>Reisen</button>
+    </div>
+    <button type="button" class="btn btn-secondary btn-full" style="margin-top:14px" onclick="closeMoreSheet();openSettings()">⚙️ Einstellungen</button>
+  </div>
+</div>
 
 <div id="settings-overlay" class="settings-overlay hidden" onclick="if(event.target===this)closeSettings()">
   <div class="settings-sheet" role="dialog" aria-labelledby="settings-title" onclick="event.stopPropagation()">
@@ -1562,6 +1670,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <option value="dark">Dunkel</option>
       </select>
     </div>
+    <button type="button" class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="logout()">Abmelden</button>
     <button type="button" class="btn btn-primary btn-full" onclick="closeSettings()">Schließen</button>
   </div>
 </div>
@@ -1695,8 +1804,23 @@ const S = {
 
 const SIGHT_PLACE_CATEGORIES = ['Restaurant', 'Sehenswürdigkeit', 'Bahnhof', 'Hotel', 'Strand', 'Bar'];
 const SIGHT_DEFAULT_CATEGORY = 'Sehenswürdigkeit';
+const SIGHT_CATEGORY_ICONS = {
+  'Restaurant': '🍽️',
+  'Sehenswürdigkeit': '🏛️',
+  'Bahnhof': '🚉',
+  'Hotel': '🏨',
+  'Strand': '🏖️',
+  'Bar': '🍸',
+  'Andere': '📌',
+};
+const SIGHT_FAVORITES_FILTER = '__fav__';
 let sightDragId = null;
 let sightCategoryFilter = '';
+let sightViewMode = 'list';
+
+function sightCategoryIcon(cat) {
+  return SIGHT_CATEGORY_ICONS[normalizeSightCategoryValue(cat)] || '📌';
+}
 
 // ================================================================
 // SUPABASE INIT
@@ -1795,7 +1919,7 @@ async function refreshAppData() {
     location.reload();
     return;
   }
-  const activeTab = document.querySelector('.nav-item.active')?.getAttribute('data-tab') || 'home';
+  const activeTab = currentTab || 'home';
   await runWithSpinner(async () => {
     await loadUserTrips();
     if (!S.trips.length) {
@@ -2320,6 +2444,34 @@ function fillTripForm() {
   set('t-addr', S.trip.hotel_address);
   set('t-dep', S.trip.departure_date || '');
   set('t-ret', S.trip.return_date || '');
+  const fold = document.getElementById('trip-data-fold');
+  if (fold) fold.open = !(S.trip.departure_date && S.trip.name);
+}
+
+function renderHomeStats() {
+  const el = document.getElementById('home-stats');
+  if (!el) return;
+  if (!S.trip) { el.innerHTML = ''; return; }
+  const sightsTotal = S.sights.length;
+  const sightsDone = S.sights.filter(s => s.visited).length;
+  const packTotal = S.packItems.length;
+  const packDone = S.packItems.filter(i => i.checked).length;
+  const packPct = packTotal ? Math.round(packDone / packTotal * 100) : 0;
+  const budgetTotal = S.budgetItems.reduce((sum, i) => sum + parseFloat(i.amount || 0), 0);
+  let nights = null;
+  if (S.trip.departure_date && S.trip.return_date) {
+    const diff = Math.round((new Date(S.trip.return_date) - new Date(S.trip.departure_date)) / 86400000);
+    if (Number.isFinite(diff) && diff >= 0) nights = diff;
+  }
+  const lastCard = nights != null
+    ? `<button type="button" class="stat-card" onclick="showTab('flights')"><span class="stat-icon">🌙</span><span class="stat-value">${nights}</span><span class="stat-label">Nächte</span></button>`
+    : `<button type="button" class="stat-card" onclick="showTab('home')"><span class="stat-icon">👥</span><span class="stat-value">${S.members.length}</span><span class="stat-label">Mitreisende</span></button>`;
+  el.innerHTML = `<div class="stat-grid">
+    <button type="button" class="stat-card" onclick="showTab('sights')"><span class="stat-icon">📍</span><span class="stat-value">${sightsDone}/${sightsTotal}</span><span class="stat-label">Orte besucht</span></button>
+    <button type="button" class="stat-card" onclick="showTab('packing')"><span class="stat-icon">🧳</span><span class="stat-value">${packPct}%</span><span class="stat-label">gepackt</span></button>
+    <button type="button" class="stat-card" onclick="showTab('budget')"><span class="stat-icon">💰</span><span class="stat-value">${budgetTotal.toFixed(0)} €</span><span class="stat-label">Ausgaben</span></button>
+    ${lastCard}
+  </div>`;
 }
 
 function getStoredThemePreference() {
@@ -2785,6 +2937,7 @@ async function renderHomeStartRow() {
   void hydrateDestinationFlags(wrap);
   applyCoverTransform(zoom, y);
   syncTripCoverFrameHeight();
+  renderHomeStats();
   await refreshTripCoverImg();
   syncTripCoverFrameHeight();
 }
@@ -2895,6 +3048,7 @@ async function loadMembers() {
 }
 
 function renderMembers() {
+  renderHomeStats();
   const el = document.getElementById('members-list');
   if (!S.members.length) { el.innerHTML = '<p style="color:var(--text-2);font-size:14px;">Noch keine Mitreisenden</p>'; return; }
   const me = S.members.find(m => m.user_id === S.user.id);
@@ -3097,6 +3251,7 @@ function renderPackTab() {
   renderPackSummary();
   renderListTabs();
   renderPackListContent();
+  renderHomeStats();
 }
 
 function renderPackSummary() {
@@ -3127,7 +3282,7 @@ function selectPackList(id) {
 function renderPackListContent() {
   const el = document.getElementById('pack-list-content');
   if (!S.packLists.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🧳</div><p>Noch keine Packliste.<br>Erstelle deine erste Liste!</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🧳</div><p>Noch keine Packliste.</p><button type="button" class="btn btn-primary" style="margin-top:12px" onclick="promptNewList()">+ Erste Liste erstellen</button></div>`;
     return;
   }
   const list = S.packLists.find(l => l.id === S.activePackListId);
@@ -3391,22 +3546,25 @@ function sightCategoryFilterChoiceList() {
 }
 
 function fillSightCategoryFilter() {
-  const sel = document.getElementById('sight-filter-category');
-  if (!sel) return;
-  const prev = typeof sightCategoryFilter === 'string' ? sightCategoryFilter : sel.value;
+  const host = document.getElementById('sight-filter-chips');
+  if (!host) return;
   const list = sightCategoryFilterChoiceList();
-  sel.innerHTML = `<option value="">${esc('Alle')}</option>${list
-    .map((o) => `<option value="${escAttr(o.label)}">${esc(o.label)}</option>`)
-    .join('')}`;
-  const canUse = !prev || prev === '' || list.some((o) => o.label === prev);
-  const next = canUse && prev ? prev : '';
-  sel.value = next;
-  sightCategoryFilter = next;
+  const cur = String(sightCategoryFilter || '');
+  if (cur && cur !== SIGHT_FAVORITES_FILTER && !list.some((o) => o.label === cur)) {
+    sightCategoryFilter = '';
+  }
+  const chips = [
+    { value: '', label: 'Alle' },
+    { value: SIGHT_FAVORITES_FILTER, label: '★ Favoriten' },
+    ...list.map((o) => ({ value: o.label, label: `${sightCategoryIcon(o.label)} ${o.label}` })),
+  ];
+  host.innerHTML = chips.map((c) =>
+    `<button type="button" class="chip${String(sightCategoryFilter || '') === c.value ? ' active' : ''}" data-value="${escAttr(c.value)}" onclick="setSightFilterFromChip(this)">${esc(c.label)}</button>`
+  ).join('');
 }
 
-function onSightFilterChange() {
-  const sel = document.getElementById('sight-filter-category');
-  sightCategoryFilter = sel ? String(sel.value || '') : '';
+function setSightFilterFromChip(btn) {
+  sightCategoryFilter = btn?.getAttribute('data-value') || '';
   renderSights();
 }
 
@@ -3419,7 +3577,7 @@ function fillSightCategorySelect() {
   const sel = document.getElementById('sight-category');
   if (!sel) return;
   const opts = sightCategoryChoicesForUi(SIGHT_DEFAULT_CATEGORY);
-  sel.innerHTML = opts.map((o) => `<option value="${escAttr(o.label)}">${esc(o.label)}</option>`).join('');
+  sel.innerHTML = opts.map((o) => `<option value="${escAttr(o.label)}">${esc(`${sightCategoryIcon(o.label)} ${o.label}`)}</option>`).join('');
   sel.value = SIGHT_DEFAULT_CATEGORY;
 }
 
@@ -3670,6 +3828,123 @@ async function loadSights() {
   renderSights();
 }
 
+// ── Tagesplanung ──
+function setSightView(mode) {
+  sightViewMode = mode === 'days' ? 'days' : 'list';
+  document.getElementById('sight-view-list')?.classList.toggle('active', sightViewMode === 'list');
+  document.getElementById('sight-view-days')?.classList.toggle('active', sightViewMode === 'days');
+  document.getElementById('sight-filter-chips')?.classList.toggle('hidden', sightViewMode === 'days');
+  document.getElementById('sight-filter-hint')?.classList.toggle('hidden', sightViewMode === 'days');
+  renderSights();
+}
+
+function tripDayList() {
+  const dep = S.trip?.departure_date;
+  if (!dep) return [];
+  const start = new Date(`${dep}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return [];
+  const ret = S.trip?.return_date;
+  let end = ret ? new Date(`${ret}T00:00:00`) : new Date(start);
+  if (Number.isNaN(end.getTime()) || end < start) end = new Date(start);
+  const out = [];
+  const d = new Date(start);
+  for (let i = 0; d <= end && i < 60; i++) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    out.push({
+      date: `${yyyy}-${mm}-${dd}`,
+      label: d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+    });
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function sightDaySelectHtml(s, compact = false) {
+  const days = tripDayList();
+  if (!days.length) return '';
+  const optLabel = (i, d) => compact ? `Tag ${i + 1}` : `Tag ${i + 1} · ${d.label}`;
+  return `<select class="sight-cat-select" aria-label="Reisetag zuordnen" onchange="updateSightDay('${s.id}', this.value)">
+    <option value="">📅 ${compact ? '–' : 'Kein Tag'}</option>
+    ${days.map((d, i) => `<option value="${d.date}"${s.planned_day === d.date ? ' selected' : ''}>📅 ${esc(optLabel(i, d))}</option>`).join('')}
+  </select>`;
+}
+
+async function updateSightDay(id, value) {
+  suppressCollaborationToast(1600);
+  const planned_day = value || null;
+  const { error } = await sb.from('sights').update({ planned_day, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) {
+    if (/planned_day|schema cache|column/i.test(error.message || '')) {
+      toast('Tagesplanung: Bitte einmal im Supabase SQL Editor ausführen (siehe Kopf von index.html): ALTER TABLE sights ADD COLUMN IF NOT EXISTS planned_day DATE;', 'error');
+    } else {
+      toast(error.message, 'error');
+    }
+    renderSights();
+    return;
+  }
+  const s = S.sights.find((x) => x.id === id);
+  if (s) s.planned_day = planned_day;
+  renderSights();
+}
+
+function dayPlanRow(s) {
+  const icon = sightCategoryIcon(s.place_category);
+  const cat = normalizeSightCategoryValue(s.place_category);
+  return `<div class="day-row${s.visited ? ' visited' : ''}">
+    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
+    <div class="day-row-main">
+      <div class="day-row-name">${s.is_favorite ? '★ ' : ''}${esc(s.name)}</div>
+      <div class="day-row-meta">${icon} ${esc(cat)}${s.note ? ` · ${esc(s.note)}` : ''}</div>
+    </div>
+    ${sightDaySelectHtml(s, true)}
+  </div>`;
+}
+
+function renderSightDayPlan() {
+  const el = document.getElementById('sights-list');
+  if (!el) return;
+  const days = tripDayList();
+  if (!days.length) {
+    el.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">📅</div>
+      <p>Trage zuerst Abreise- und Rückreisedatum bei den Reisedaten ein.<br>Danach kannst du jeden Ort einem Reisetag zuordnen.</p>
+      <button type="button" class="btn btn-primary" style="margin-top:12px" onclick="showTab('home')">Zu den Reisedaten</button>
+    </div></div>`;
+    return;
+  }
+  if (!S.sights.length) {
+    el.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-icon">📍</div>
+      <p>Noch keine Orte gespeichert.<br>Füge oben deinen ersten Ort hinzu, um ihn einem Tag zuzuordnen.</p>
+    </div></div>`;
+    return;
+  }
+  let html = '';
+  days.forEach((d, i) => {
+    const items = sortSightSubset(S.sights.filter((s) => s.planned_day === d.date));
+    html += `<div class="day-card">
+      <div class="day-head">
+        <span class="day-num">Tag ${i + 1}</span>
+        <span class="day-date">${esc(d.label)}</span>
+        <span class="day-count">${items.length} ${items.length === 1 ? 'Ort' : 'Orte'}</span>
+      </div>
+      ${items.length ? items.map((s) => dayPlanRow(s)).join('') : `<div class="day-empty">Noch nichts geplant</div>`}
+    </div>`;
+  });
+  const unassigned = sortSightSubset(S.sights.filter((s) => !s.planned_day));
+  if (unassigned.length) {
+    html += `<div class="day-card day-card-unassigned">
+      <div class="day-head">
+        <span class="day-num">Ohne Tag</span>
+        <span class="day-date">Noch nicht zugeordnet</span>
+        <span class="day-count">${unassigned.length}</span>
+      </div>
+      ${unassigned.map((s) => dayPlanRow(s)).join('')}
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
 function sightMapsSearchQuery(s) {
   const parts = [s?.name, s?.note, S.trip?.destination, S.trip?.hotel_address, S.trip?.hotel].filter(Boolean);
   return parts.join(', ');
@@ -3767,21 +4042,28 @@ function sightCategoryOptionsHtml(selectedRaw) {
   const labels = opts.map((o) => o.label);
   if (!sel || !labels.includes(sel)) sel = SIGHT_DEFAULT_CATEGORY;
   return opts
-    .map((o) => `<option value="${escAttr(o.label)}"${o.label === sel ? ' selected' : ''}>${esc(o.label)}</option>`)
+    .map((o) => `<option value="${escAttr(o.label)}"${o.label === sel ? ' selected' : ''}>${esc(`${sightCategoryIcon(o.label)} ${o.label}`)}</option>`)
     .join('');
 }
 
 function renderSights() {
   const el = document.getElementById('sights-list');
-  if (!S.sights.length) {
-    fillSightCategoryFilter();
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte hinzugefügt.</p></div>`;
+  if (!el) return;
+  fillSightCategoryFilter();
+  renderHomeStats();
+  if (sightViewMode === 'days') {
+    renderSightDayPlan();
     return;
   }
-  fillSightCategoryFilter();
+  if (!S.sights.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📍</div><p>Noch keine Orte gespeichert.<br>Füge oben deinen ersten Ort hinzu — z.&nbsp;B. ein Restaurant, einen Strand oder eine Sehenswürdigkeit.</p></div>`;
+    return;
+  }
   const f = String(sightCategoryFilter ?? '').trim();
   let pool = S.sights;
-  if (f) {
+  if (f === SIGHT_FAVORITES_FILTER) {
+    pool = S.sights.filter((s) => s.is_favorite);
+  } else if (f) {
     pool = S.sights.filter((s) => {
       const raw = String(s.place_category ?? '').trim();
       const label = raw || SIGHT_DEFAULT_CATEGORY;
@@ -3789,7 +4071,10 @@ function renderSights() {
     });
   }
   if (!pool.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>${f ? `Keine Orte in „${esc(f)}“. Bitte anderen Filter wählen oder zurück auf „Alle“.`: 'Keine Orte.'}</p></div>`;
+    const msg = f === SIGHT_FAVORITES_FILTER
+      ? 'Noch keine Favoriten. Tippe bei einem Ort auf ☆, um ihn zu markieren.'
+      : f ? `Keine Orte in „${esc(f)}“. Bitte anderen Filter wählen oder zurück auf „Alle“.` : 'Keine Orte.';
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>${msg}</p></div>`;
     return;
   }
   const active = sortSightSubset(pool.filter((s) => !s.visited));
@@ -3837,6 +4122,7 @@ function sightRow(s, zone) {
     <div class="sight-info">
       <div class="sight-toolbar">
         <select class="sight-cat-select" aria-label="Kategorie" onchange="updateSightCategory('${s.id}',this.value)">${catSel}</select>
+        ${sightDaySelectHtml(s)}
         <button type="button" class="sight-fav-star${favCls}" onclick="toggleSightFavorite('${s.id}')" title="${escAttr(favTitle)}">${fav ? '★' : '☆'}</button>
       </div>
       <div class="sight-name">${esc(s.name)}</div>
@@ -4041,6 +4327,7 @@ async function loadBudget() {
 }
 
 function renderBudget() {
+  renderHomeStats();
   const myItems = S.budgetItems.filter(i => i.created_by === S.user.id);
   const myTotal = myItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
   const tripTotal = S.budgetItems.reduce((s,i) => s + parseFloat(i.amount||0), 0);
@@ -5189,6 +5476,7 @@ function handleSightRT(p) {
         prev.note !== p.new.note ||
         (prev.place_category || SIGHT_DEFAULT_CATEGORY) !== (p.new.place_category || SIGHT_DEFAULT_CATEGORY) ||
         !!prev.is_favorite !== !!p.new.is_favorite ||
+        (prev.planned_day || null) !== (p.new.planned_day || null) ||
         Number(prev.sort_order ?? 0) !== Number(p.new.sort_order ?? 0));
     if (otherVisit || textChange) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
@@ -5236,12 +5524,34 @@ function flashEl(id) {
 // ================================================================
 // UI HELPERS
 // ================================================================
+const MAIN_NAV_TABS = ['home', 'sights', 'packing', 'budget'];
+let currentTab = 'home';
+
 function showTab(name) {
+  currentTab = name;
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.getElementById(`tab-${name}`)?.classList.add('active');
-  document.querySelector(`[data-tab="${name}"]`)?.classList.add('active');
+  if (MAIN_NAV_TABS.includes(name)) {
+    document.querySelector(`#bottom-nav [data-tab="${name}"]`)?.classList.add('active');
+  } else {
+    document.getElementById('nav-more-btn')?.classList.add('active');
+  }
+  document.querySelectorAll('.more-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-tab') === name);
+  });
+  closeMoreSheet();
   document.getElementById('tab-container').scrollTop = 0;
+}
+
+function toggleMoreSheet() {
+  const ov = document.getElementById('more-overlay');
+  if (!ov) return;
+  ov.classList.toggle('hidden');
+}
+
+function closeMoreSheet() {
+  document.getElementById('more-overlay')?.classList.add('hidden');
 }
 
 let spinnerCount = 0;
