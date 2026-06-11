@@ -4100,11 +4100,11 @@ function sightMapsLinksHtml(s) {
   if (!q) return '';
   const enc = encodeURIComponent(q);
   const gUrl = `https://www.google.com/maps/search/?api=1&query=${enc}`;
-  const oUrl = `https://www.openstreetmap.org/search?query=${enc}`;
+  const aUrl = `https://maps.apple.com/?q=${enc}`;
   const safeHint = escAttr(q.length > 80 ? q.slice(0, 80) + '…' : q);
   return `<div class="sight-map-row">
     <a href="${gUrl}" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen (${safeHint})">Google Maps</a>
-    <a href="${oUrl}" target="_blank" rel="noopener noreferrer" title="In OpenStreetMap suchen (${safeHint})">OpenStreetMap</a>
+    <a href="${aUrl}" target="_blank" rel="noopener noreferrer" title="In Apple Karten öffnen (${safeHint})">Apple Maps</a>
   </div>`;
 }
 
