@@ -4100,7 +4100,9 @@ function sightMapsLinksHtml(s) {
   if (!q) return '';
   const enc = encodeURIComponent(q);
   const gUrl = `https://www.google.com/maps/search/?api=1&query=${enc}`;
-  const aUrl = `https://maps.apple.com/?q=${enc}`;
+  // Apple Maps ist bei langen Anfragen streng: nur Name + Reiseziel übergeben
+  const appleQuery = [s?.name, S.trip?.destination].filter(Boolean).join(', ').trim() || q;
+  const aUrl = `https://maps.apple.com/?q=${encodeURIComponent(appleQuery)}`;
   const safeHint = escAttr(q.length > 80 ? q.slice(0, 80) + '…' : q);
   return `<div class="sight-map-row">
     <a href="${gUrl}" target="_blank" rel="noopener noreferrer" title="In Google Maps öffnen (${safeHint})">Google Maps</a>
