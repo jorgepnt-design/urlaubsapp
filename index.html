@@ -631,6 +631,24 @@ button{cursor:pointer;border:none;background:none;}
 .day-row-meta{font-size:12px;color:var(--text-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .day-row .sight-cat-select{flex-shrink:0;max-width:96px;}
 
+/* ── Dialoge (Ersatz für prompt/confirm) ── */
+.dialog-overlay{align-items:center;}
+.dialog-sheet{margin-bottom:0;}
+.dialog-message{font-size:14px;color:var(--text-2);line-height:1.5;margin:-6px 0 14px;}
+.dialog-actions{display:flex;gap:10px;margin-top:6px;}
+.dialog-actions .btn{flex:1;}
+
+/* ── Tagesplan Drag & Drop ── */
+.day-drag-handle{
+  flex-shrink:0;width:32px;height:32px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--bg);cursor:grab;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;line-height:1;color:var(--text-2);
+}
+.day-drag-handle:active{cursor:grabbing;}
+.day-card.day-drop-target{border-color:var(--green);background:var(--green-light);}
+@media (hover:none){.day-drag-handle{display:none;}}
+
 /* ── Einklappbare Karten ── */
 details.fold-card > summary{list-style:none;cursor:pointer;user-select:none;}
 details.fold-card > summary::-webkit-details-marker{display:none;}
@@ -1659,6 +1677,8 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   </div>
 </div>
 
+<div id="dialog-overlay" class="settings-overlay dialog-overlay hidden" onclick="if(event.target===this)closeAppDialog(null)"></div>
+
 <div id="settings-overlay" class="settings-overlay hidden" onclick="if(event.target===this)closeSettings()">
   <div class="settings-sheet" role="dialog" aria-labelledby="settings-title" onclick="event.stopPropagation()">
     <div id="settings-title" class="settings-sheet-title">Einstellungen</div>
@@ -2295,7 +2315,7 @@ async function deleteTrip(tripId) {
     return;
   }
   const label = trip.name || 'diese Reise';
-  if (!confirm(`${label} wirklich löschen? Alle zugehörigen Daten werden entfernt.`)) return;
+  if (!(await appConfirm('Reise löschen', `„${label}“ wirklich löschen? Alle zugehörigen Daten werden entfernt.`, { confirmText: 'Löschen', danger: true }))) return;
 
   suppressCollaborationToast(4000);
   showSpinner();
@@ -2363,7 +2383,7 @@ async function leaveTrip(tripId) {
     return;
   }
   const label = trip.name || 'diese Reise';
-  if (!confirm(`Reise „${label}“ wirklich verlassen? Du verlierst den Zugriff.`)) return;
+  if (!(await appConfirm('Reise verlassen', `Reise „${label}“ wirklich verlassen? Du verlierst den Zugriff.`, { confirmText: 'Verlassen', danger: true }))) return;
 
   suppressCollaborationToast(4000);
   showSpinner();
@@ -3016,7 +3036,7 @@ async function uploadTripCover(files) {
 
 async function removeTripCover() {
   if (!S.trip?.cover_image_path || !isCurrentTripOwner()) return;
-  if (!confirm('Titelbild wirklich entfernen?')) return;
+  if (!(await appConfirm('Titelbild entfernen', 'Das Titelbild der Reise wirklich entfernen?', { confirmText: 'Entfernen', danger: true }))) return;
   const path = S.trip.cover_image_path;
   suppressCollaborationToast(2000);
   showSpinner();
@@ -3072,7 +3092,7 @@ async function removeMember(userId) {
   if (me.role !== 'owner') { toast('Nur der Ersteller kann Mitglieder entfernen','error'); return; }
   if (member.role === 'owner') { toast('Der Ersteller kann nicht entfernt werden','error'); return; }
   const name = member.display_name || 'dieses Mitglied';
-  if (!confirm(`${name} wirklich aus der Reise entfernen?`)) return;
+  if (!(await appConfirm('Mitglied entfernen', `${name} wirklich aus der Reise entfernen?`, { confirmText: 'Entfernen', danger: true }))) return;
 
   suppressCollaborationToast(3500);
   let delErr = null;
@@ -3363,7 +3383,7 @@ function renderPackListContent() {
 }
 
 async function promptNewList() {
-  const name = prompt('Name der neuen Packliste:');
+  const name = await appPrompt('Neue Packliste', { label: 'Name der Liste', placeholder: 'z. B. Mein Koffer', confirmText: 'Erstellen' });
   if (!name?.trim()) return;
   await runWithSpinner(async () => {
     const { data, error } = await sb.from('pack_lists').insert({ trip_id: S.trip.id, owner_user_id: S.user.id, list_name: name.trim() }).select().single();
@@ -3377,7 +3397,7 @@ async function promptNewList() {
 async function promptRenameList(id) {
   suppressCollaborationToast(1600);
   const list = S.packLists.find(l => l.id === id);
-  const name = prompt('Neuer Name:', list?.list_name || '');
+  const name = await appPrompt('Liste umbenennen', { label: 'Neuer Name', value: list?.list_name || '' });
   if (!name?.trim()) return;
   await runWithSpinner(async () => {
     const { error } = await sb.from('pack_lists').update({ list_name: name.trim() }).eq('id', id);
@@ -3389,7 +3409,8 @@ async function promptRenameList(id) {
 
 async function deletePackList(id) {
   suppressCollaborationToast(1600);
-  if (!confirm('Liste wirklich löschen?')) return;
+  const list = S.packLists.find(l => l.id === id);
+  if (!(await appConfirm('Liste löschen', `Packliste „${list?.list_name || ''}“ samt allen Artikeln löschen?`, { confirmText: 'Löschen', danger: true }))) return;
   await runWithSpinner(async () => {
     const { error } = await sb.from('pack_lists').delete().eq('id', id);
     if (error) { toast(error.message,'error'); return; }
@@ -3648,7 +3669,7 @@ async function editSightCustomCategory(id) {
   const list = parseSightCustomCategories(S.trip?.sight_custom_categories);
   const item = list.find((x) => x.id === id);
   if (!item) return;
-  const next = prompt('Neuer Name für die Kategorie:', item.name);
+  const next = await appPrompt('Kategorie umbenennen', { label: 'Neuer Name', value: item.name });
   if (next === null) return;
   const trimmed = next.trim();
   if (!trimmed) {
@@ -3689,7 +3710,7 @@ async function deleteSightCustomCategory(id) {
   const list = parseSightCustomCategories(S.trip?.sight_custom_categories);
   const item = list.find((x) => x.id === id);
   if (!item) return;
-  if (!confirm(`Kategorie „${item.name}“ löschen? Betroffene Orte werden auf „Andere“ gesetzt.`)) return;
+  if (!(await appConfirm('Kategorie löschen', `Kategorie „${item.name}“ löschen? Betroffene Orte werden auf „Andere“ gesetzt.`, { confirmText: 'Löschen', danger: true }))) return;
   suppressCollaborationToast(2000);
   const { error: u1 } = await sb
     .from('sights')
@@ -3889,10 +3910,48 @@ async function updateSightDay(id, value) {
   renderSights();
 }
 
+let dayPlanDragId = null;
+
+function dayRowDragStart(ev, id) {
+  dayPlanDragId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  try { ev.dataTransfer.setData('text/plain', id); } catch (_) {}
+  document.getElementById(`dpr-${id}`)?.classList.add('sight-dragging');
+}
+
+function dayRowDragEnd(ev, id) {
+  document.getElementById(`dpr-${id}`)?.classList.remove('sight-dragging');
+  document.querySelectorAll('.day-card.day-drop-target').forEach((el) => el.classList.remove('day-drop-target'));
+}
+
+function dayCardDragOver(ev) {
+  if (!dayPlanDragId) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  ev.currentTarget.classList.add('day-drop-target');
+}
+
+function dayCardDragLeave(ev) {
+  ev.currentTarget.classList.remove('day-drop-target');
+}
+
+async function dayCardDrop(ev, date) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('day-drop-target');
+  const id = dayPlanDragId;
+  dayPlanDragId = null;
+  if (!id) return;
+  const s = S.sights.find((x) => x.id === id);
+  if (!s || (s.planned_day || '') === (date || '')) return;
+  await updateSightDay(id, date);
+}
+
 function dayPlanRow(s) {
   const icon = sightCategoryIcon(s.place_category);
   const cat = normalizeSightCategoryValue(s.place_category);
-  return `<div class="day-row${s.visited ? ' visited' : ''}">
+  return `<div class="day-row${s.visited ? ' visited' : ''}" id="dpr-${s.id}">
+    <div class="day-drag-handle" draggable="true" title="Ziehen, um den Tag zu wechseln"
+      ondragstart="dayRowDragStart(event,'${s.id}')" ondragend="dayRowDragEnd(event,'${s.id}')">⠿</div>
     <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
     <div class="day-row-main">
       <div class="day-row-name">${s.is_favorite ? '★ ' : ''}${esc(s.name)}</div>
@@ -3922,7 +3981,7 @@ function renderSightDayPlan() {
   let html = '';
   days.forEach((d, i) => {
     const items = sortSightSubset(S.sights.filter((s) => s.planned_day === d.date));
-    html += `<div class="day-card">
+    html += `<div class="day-card" ondragover="dayCardDragOver(event)" ondragleave="dayCardDragLeave(event)" ondrop="dayCardDrop(event,'${d.date}')">
       <div class="day-head">
         <span class="day-num">Tag ${i + 1}</span>
         <span class="day-date">${esc(d.label)}</span>
@@ -3933,7 +3992,7 @@ function renderSightDayPlan() {
   });
   const unassigned = sortSightSubset(S.sights.filter((s) => !s.planned_day));
   if (unassigned.length) {
-    html += `<div class="day-card day-card-unassigned">
+    html += `<div class="day-card day-card-unassigned" ondragover="dayCardDragOver(event)" ondragleave="dayCardDragLeave(event)" ondrop="dayCardDrop(event,'')">
       <div class="day-head">
         <span class="day-num">Ohne Tag</span>
         <span class="day-date">Noch nicht zugeordnet</span>
@@ -4219,16 +4278,21 @@ async function toggleSight(id, visited) {
 async function editSight(id) {
   const sight = S.sights.find((x) => x.id === id);
   if (!sight) return;
-  const nextName = prompt('Ort bearbeiten - Name:', sight.name || '');
-  if (nextName === null) return;
-  const name = nextName.trim();
+  const res = await openAppDialog({
+    title: 'Ort bearbeiten',
+    fields: [
+      { id: 'name', label: 'Name', value: sight.name || '', placeholder: 'Name des Ortes' },
+      { id: 'note', label: 'Notiz (optional)', value: sight.note || '', placeholder: 'z. B. Tickets vorab buchen' },
+    ],
+    confirmText: 'Speichern',
+  });
+  if (!res || typeof res !== 'object') return;
+  const name = String(res.name || '').trim();
   if (!name) {
     toast('Bitte Namen eingeben', 'error');
     return;
   }
-  const nextNote = prompt('Ort bearbeiten - Notiz:', sight.note || '');
-  if (nextNote === null) return;
-  const note = nextNote.trim();
+  const note = String(res.note || '').trim();
 
   suppressCollaborationToast(1600);
   const { error } = await sb
@@ -4246,6 +4310,8 @@ async function editSight(id) {
 }
 
 async function deleteSight(id) {
+  const sight = S.sights.find((x) => x.id === id);
+  if (!(await appConfirm('Ort löschen', `„${sight?.name || 'Diesen Ort'}“ wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
   suppressCollaborationToast(1600);
   const { error } = await sb.from('sights').delete().eq('id', id);
   if (error) {
@@ -4659,7 +4725,7 @@ async function addPrivateNoteEntry() {
 }
 
 async function deletePrivateNoteEntry(id) {
-  if (!confirm('Diesen privaten Eintrag wirklich löschen?')) return;
+  if (!(await appConfirm('Eintrag löschen', 'Diesen privaten Eintrag wirklich löschen?', { confirmText: 'Löschen', danger: true }))) return;
   suppressCollaborationToast(1200);
   showSpinner();
   try {
@@ -5035,6 +5101,7 @@ async function addAttachments() {
 async function removeAttachment(id) {
   const row = S.attachments.find(a => a.id === id);
   if (!row) return;
+  if (!(await appConfirm('Anlage löschen', `„${row.file_name || 'Diese Anlage'}“ wirklich endgültig löschen?`, { confirmText: 'Löschen', danger: true }))) return;
   suppressCollaborationToast(2500);
   await runWithSpinner(async () => {
     const rmStorage = await sb.storage.from(ATTACHMENTS_BUCKET).remove([row.file_path]);
@@ -5051,7 +5118,7 @@ async function renameAttachment(id) {
   const row = S.attachments.find(a => a.id === id);
   if (!row) return;
   const currentName = row.file_name || '';
-  const nextName = prompt('Neuen Namen für die Anlage eingeben:', currentName);
+  const nextName = await appPrompt('Anlage umbenennen', { label: 'Neuer Name', value: currentName });
   if (nextName === null) return;
   const trimmed = nextName.trim();
   if (!trimmed) { toast('Name darf nicht leer sein', 'error'); return; }
@@ -5552,6 +5619,82 @@ function toggleMoreSheet() {
 
 function closeMoreSheet() {
   document.getElementById('more-overlay')?.classList.add('hidden');
+}
+
+// ================================================================
+// DIALOGE (Ersatz für native prompt/confirm)
+// ================================================================
+let dialogResolve = null;
+
+function closeAppDialog(result) {
+  const ov = document.getElementById('dialog-overlay');
+  if (ov) ov.classList.add('hidden');
+  const resolve = dialogResolve;
+  dialogResolve = null;
+  if (resolve) resolve(result);
+}
+
+function confirmAppDialog() {
+  const ov = document.getElementById('dialog-overlay');
+  let ids = [];
+  try { ids = JSON.parse(ov?.dataset.fieldIds || '[]'); } catch (_) {}
+  if (!ids.length) { closeAppDialog(true); return; }
+  const values = {};
+  ids.forEach((id) => { values[id] = document.getElementById(`dlg-field-${id}`)?.value ?? ''; });
+  closeAppDialog(values);
+}
+
+function openAppDialog({ title, message = '', fields = [], confirmText = 'OK', cancelText = 'Abbrechen', danger = false }) {
+  const ov = document.getElementById('dialog-overlay');
+  if (!ov) return Promise.resolve(null);
+  if (dialogResolve) closeAppDialog(null);
+  const fieldsHtml = fields.map((f) => `
+    <div class="form-group">
+      ${f.label ? `<label class="form-label" for="dlg-field-${escAttr(f.id)}">${esc(f.label)}</label>` : ''}
+      ${f.type === 'textarea'
+        ? `<textarea id="dlg-field-${escAttr(f.id)}" class="form-input" rows="3" placeholder="${escAttr(f.placeholder || '')}">${esc(f.value || '')}</textarea>`
+        : `<input id="dlg-field-${escAttr(f.id)}" class="form-input" type="text" value="${escAttr(f.value || '')}" placeholder="${escAttr(f.placeholder || '')}" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmAppDialog();}">`}
+    </div>`).join('');
+  ov.innerHTML = `<div class="settings-sheet dialog-sheet" role="dialog" aria-modal="true" aria-labelledby="dialog-title"
+      onclick="event.stopPropagation()" onkeydown="if(event.key==='Escape'){closeAppDialog(null);}">
+    <div id="dialog-title" class="settings-sheet-title">${esc(title)}</div>
+    ${message ? `<p class="dialog-message">${esc(message)}</p>` : ''}
+    ${fieldsHtml}
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeAppDialog(null)">${esc(cancelText)}</button>
+      <button type="button" id="dialog-confirm-btn" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" onclick="confirmAppDialog()">${esc(confirmText)}</button>
+    </div>
+  </div>`;
+  ov.dataset.fieldIds = JSON.stringify(fields.map((f) => f.id));
+  ov.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const firstInput = ov.querySelector('input,textarea');
+    if (firstInput) { firstInput.focus(); if (firstInput.select) firstInput.select(); }
+    else ov.querySelector('#dialog-confirm-btn')?.focus();
+  });
+  return new Promise((resolve) => { dialogResolve = resolve; });
+}
+
+async function appConfirm(title, message, opts = {}) {
+  const res = await openAppDialog({
+    title,
+    message,
+    confirmText: opts.confirmText || 'OK',
+    cancelText: opts.cancelText || 'Abbrechen',
+    danger: !!opts.danger,
+  });
+  return res === true;
+}
+
+async function appPrompt(title, { label = '', value = '', placeholder = '', confirmText = 'Speichern', message = '' } = {}) {
+  const res = await openAppDialog({
+    title,
+    message,
+    fields: [{ id: 'value', label, value, placeholder }],
+    confirmText,
+  });
+  if (!res || typeof res !== 'object') return null;
+  return String(res.value ?? '');
 }
 
 let spinnerCount = 0;
