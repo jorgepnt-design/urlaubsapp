@@ -99,6 +99,15 @@ Einmal im SQL Editor ausführen, danach Seite neu laden:
 ALTER TABLE sights ADD COLUMN IF NOT EXISTS planned_day DATE;
 NOTIFY pgrst, 'reload schema';
 
+----------------------------------------------------------------
+ORTE — zweiter Status „abgehakt" (unabhängig von „besucht")
+Einmal im SQL Editor ausführen, danach Seite neu laden:
+----------------------------------------------------------------
+
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS is_done BOOLEAN DEFAULT FALSE;
+ALTER TABLE sights ADD COLUMN IF NOT EXISTS done_by UUID REFERENCES auth.users(id);
+NOTIFY pgrst, 'reload schema';
+
 UPDATE sights AS s SET sort_order = sq.rn FROM (
   SELECT id,
     ROW_NUMBER() OVER (PARTITION BY trip_id ORDER BY updated_at DESC NULLS LAST) - 1 AS rn
@@ -624,8 +633,10 @@ button{cursor:pointer;border:none;background:none;}
   padding:10px 0;border-bottom:1px solid var(--border);
 }
 .day-row:last-child{border-bottom:none;}
-.day-row.visited{opacity:0.55;}
-.day-row.visited .day-row-name{text-decoration:line-through;}
+.day-row.visited{background:rgba(29,158,117,0.10);}
+.day-row.is-done{background:rgba(59,130,246,0.10);}
+.day-row.visited.is-done{background:linear-gradient(135deg,rgba(29,158,117,0.13),rgba(59,130,246,0.13));}
+.day-row.visited .day-row-name{color:var(--green-dark);}
 .day-row-main{flex:1;min-width:0;}
 .day-row-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .day-row-meta{font-size:12px;color:var(--text-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -853,8 +864,11 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   transition:all .3s;
 }
 .sight-item:last-child{border-bottom:none;}
-.sight-item.visited{opacity:0.55;}
-.sight-item.visited .sight-name{text-decoration:line-through;}
+/* Status-Hintergründe: besucht = grün, abgehakt = blau, beides = Verlauf */
+.sight-item.visited{background:rgba(29,158,117,0.10);}
+.sight-item.is-done{background:rgba(59,130,246,0.10);}
+.sight-item.visited.is-done{background:linear-gradient(135deg,rgba(29,158,117,0.13),rgba(59,130,246,0.13));}
+.sight-item.visited .sight-name{color:var(--green-dark);}
 .sight-actions{
   display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;
 }
@@ -909,6 +923,18 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
 }
 .sight-fav-star.on{filter:none;}
 .sight-fav-star.off{opacity:0.35;}
+.sight-status-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 11px;border-radius:9999px;min-height:34px;
+  font-size:12px;font-weight:700;cursor:pointer;
+  border:1.5px solid var(--border);background:var(--card);color:var(--text-2);
+  transition:all .15s;
+}
+.sight-status-btn .dot{font-size:13px;line-height:1;}
+.sight-status-btn.visited-btn.on{background:rgba(29,158,117,0.14);border-color:rgba(29,158,117,0.5);color:var(--green-dark);}
+.sight-status-btn.done-btn.on{background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.5);color:#1D4ED8;}
+:root[data-theme="dark"] .sight-status-btn.done-btn.on{color:#93C5FD;}
+.sight-status-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
 
 .notes-checklist-block{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
 .notes-checklist-head{font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:8px;}
@@ -3768,36 +3794,13 @@ async function persistSightOrderArray(ordered) {
 }
 
 async function normalizeSightOrderFull() {
-  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
-  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
-  await persistSightOrderArray([...active, ...visited]);
+  await persistSightOrderArray(sortSightSubset(S.sights));
 }
 
-async function normalizeSightOrdersAfterToggle(changedId, nowVisited) {
-  const activeSans = sortSightSubset(S.sights.filter((s) => !s.visited && s.id !== changedId));
-  const visitedSans = sortSightSubset(S.sights.filter((s) => s.visited && s.id !== changedId));
-  const item = S.sights.find((s) => s.id === changedId);
-  if (!item) return;
-  let ordered;
-  if (nowVisited) ordered = [...activeSans, ...visitedSans, item];
-  else ordered = [...activeSans, item, ...visitedSans];
-  await persistSightOrderArray(ordered);
-}
-
-async function reorderSightZone(zone, orderedIdsInZone) {
+async function reorderSightList(orderedIds) {
   if (String(sightCategoryFilter ?? '').trim()) return;
-  const active = sortSightSubset(S.sights.filter((s) => !s.visited));
-  const visited = sortSightSubset(S.sights.filter((s) => s.visited));
-  let newActive;
-  let newVisited;
-  if (zone === 'active') {
-    newActive = orderedIdsInZone.map((id) => S.sights.find((s) => s.id === id)).filter(Boolean);
-    newVisited = visited;
-  } else {
-    newActive = active;
-    newVisited = orderedIdsInZone.map((id) => S.sights.find((s) => s.id === id)).filter(Boolean);
-  }
-  await persistSightOrderArray([...newActive, ...newVisited]);
+  const ordered = orderedIds.map((id) => S.sights.find((s) => s.id === id)).filter(Boolean);
+  await persistSightOrderArray(ordered);
 }
 
 function sightDragStart(ev, id) {
@@ -3822,12 +3825,11 @@ function sightDragOver(ev) {
   ev.dataTransfer.dropEffect = 'move';
 }
 
-async function sightDropOnRow(ev, zone, targetId) {
+async function sightDropOnRow(ev, targetId) {
   ev.preventDefault();
   if (String(sightCategoryFilter ?? '').trim()) return;
   if (!sightDragId || sightDragId === targetId) return;
-  const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
-  const ids = subset.map((s) => s.id);
+  const ids = sortSightSubset(S.sights).map((s) => s.id);
   const from = ids.indexOf(sightDragId);
   const to = ids.indexOf(targetId);
   if (from === -1 || to === -1) return;
@@ -3836,16 +3838,15 @@ async function sightDropOnRow(ev, zone, targetId) {
   const insAt = next.indexOf(targetId);
   next.splice(insAt, 0, sightDragId);
   sightDragId = null;
-  await reorderSightZone(zone, next);
+  await reorderSightList(next);
 }
 
-async function sightNudge(id, zone, delta) {
+async function sightNudge(id, delta) {
   if (String(sightCategoryFilter ?? '').trim()) {
     toast('Zum Sortieren bitte den Filter auf „Alle“ stellen.', '');
     return;
   }
-  const subset = sortSightSubset(S.sights.filter((s) => (zone === 'active' ? !s.visited : s.visited)));
-  const ids = subset.map((s) => s.id);
+  const ids = sortSightSubset(S.sights).map((s) => s.id);
   const idx = ids.indexOf(id);
   const j = idx + delta;
   if (idx < 0 || j < 0 || j >= ids.length) return;
@@ -3853,7 +3854,7 @@ async function sightNudge(id, zone, delta) {
   const t = next[j];
   next[j] = next[idx];
   next[idx] = t;
-  await reorderSightZone(zone, next);
+  await reorderSightList(next);
 }
 
 async function loadSights() {
@@ -3962,10 +3963,10 @@ async function dayCardDrop(ev, date) {
 function dayPlanRow(s) {
   const icon = sightCategoryIcon(s.place_category);
   const cat = normalizeSightCategoryValue(s.place_category);
-  return `<div class="day-row${s.visited ? ' visited' : ''}" id="dpr-${s.id}">
+  return `<div class="day-row${s.visited ? ' visited' : ''}${s.is_done ? ' is-done' : ''}" id="dpr-${s.id}">
     <div class="day-drag-handle" draggable="true" title="Ziehen, um den Tag zu wechseln"
       ondragstart="dayRowDragStart(event,'${s.id}')" ondragend="dayRowDragEnd(event,'${s.id}')">⠿</div>
-    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
+    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})" title="${s.visited ? 'Als nicht besucht markieren' : 'Als besucht markieren'}">${s.visited ? '✓' : ''}</div>
     <div class="day-row-main">
       <div class="day-row-name">${s.is_favorite ? '★ ' : ''}${esc(s.name)}</div>
       <div class="day-row-meta">${icon} ${esc(cat)}${s.note ? ` · ${esc(s.note)}` : ''}</div>
@@ -4151,48 +4152,46 @@ function renderSights() {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>${msg}</p></div>`;
     return;
   }
-  const active = sortSightSubset(pool.filter((s) => !s.visited));
-  const visited = sortSightSubset(pool.filter((s) => s.visited));
-  let html = '';
-  if (active.length) {
-    html += `<div class="card">${active.map((s) => sightRow(s, 'active')).join('')}</div>`;
-  }
-  if (visited.length) {
-    html += `<div class="section-title">✅ Besucht</div><div class="card">${visited.map((s) => sightRow(s, 'visited')).join('')}</div>`;
-  }
-  el.innerHTML = html;
+  const ordered = sortSightSubset(pool);
+  el.innerHTML = `<div class="card">${ordered.map((s) => sightRow(s)).join('')}</div>`;
   void hydrateSightMapPreviews();
 }
 
-function sightRow(s, zone) {
+function sightRow(s) {
   const reorderLocked = !!String(sightCategoryFilter ?? '').trim();
-  const member = S.members.find((m) => m.user_id === s.visited_by);
-  const by = s.visited && s.visited_by ? member?.display_name || '' : '';
+  const visitedMember = S.members.find((m) => m.user_id === s.visited_by);
+  const doneMember = S.members.find((m) => m.user_id === s.done_by);
+  const visitedBy = s.visited && s.visited_by ? visitedMember?.display_name || '' : '';
+  const doneBy = s.is_done && s.done_by ? doneMember?.display_name || '' : '';
   const maps = sightMapsLinksHtml(s);
   const preview = sightMapPreviewHtml(s);
   const fav = !!s.is_favorite;
   const catSel = sightCategoryOptionsHtml(s.place_category);
   const favCls = fav ? ' on' : ' off';
   const favTitle = fav ? 'Favorit entfernen' : 'Als Favorit markieren';
-  const rowCls = `sight-item${s.visited ? ' visited' : ''}${fav ? ' sight-item-fav' : ''}`;
+  const rowCls = `sight-item${s.visited ? ' visited' : ''}${s.is_done ? ' is-done' : ''}${fav ? ' sight-item-fav' : ''}`;
   const nudgeBtns = reorderLocked
     ? `<div class="sight-nudge-wrap" aria-hidden="true">
       <button type="button" class="sight-nudge-btn" disabled title="Sortieren bei aktivem Filter ausgeblendet">↑</button>
       <button type="button" class="sight-nudge-btn" disabled title="Sortieren bei aktivem Filter ausgeblendet">↓</button>
     </div>`
     : `<div class="sight-nudge-wrap" aria-hidden="true">
-      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',-1)" title="Nach oben">↑</button>
-      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}','${zone}',1)" title="Nach unten">↓</button>
+      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}',-1)" title="Nach oben">↑</button>
+      <button type="button" class="sight-nudge-btn" onclick="sightNudge('${s.id}',1)" title="Nach unten">↓</button>
     </div>`;
   const dragBlock = reorderLocked
     ? `<div class="sight-drag-handle sight-drag-disabled" draggable="false" title="Sortieren bei aktivem Filter nicht möglich – „Alle“ wählen.">⠿</div>`
     : `<div class="sight-drag-handle" draggable="true" title="Ziehen zum Sortieren"
       ondragstart="sightDragStart(event,'${s.id}')" ondragend="sightDragEnd(event,'${s.id}')">⠿</div>`;
+  const attribution = [
+    visitedBy ? `Besucht von ${esc(visitedBy)}` : '',
+    doneBy ? `Abgehakt von ${esc(doneBy)}` : '',
+  ].filter(Boolean).join(' · ');
   return `<div class="${rowCls}" id="si-${s.id}" data-sight-id="${s.id}"
-    ondragover="sightDragOver(event)" ondrop="sightDropOnRow(event,'${zone}','${s.id}')">
+    ondragover="sightDragOver(event)" ondrop="sightDropOnRow(event,'${s.id}')">
     ${nudgeBtns}
     ${dragBlock}
-    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})">${s.visited ? '✓' : ''}</div>
+    <div class="sight-check" onclick="toggleSight('${s.id}',${!s.visited})" title="${s.visited ? 'Als nicht besucht markieren' : 'Als besucht markieren'}">${s.visited ? '✓' : ''}</div>
     <div class="sight-info">
       <div class="sight-toolbar">
         <select class="sight-cat-select" aria-label="Kategorie" onchange="updateSightCategory('${s.id}',this.value)">${catSel}</select>
@@ -4201,8 +4200,16 @@ function sightRow(s, zone) {
       </div>
       <div class="sight-name">${esc(s.name)}</div>
       ${s.note ? `<div class="sight-note">${esc(s.note)}</div>` : ''}
+      <div class="sight-status-row">
+        <button type="button" class="sight-status-btn visited-btn${s.visited ? ' on' : ''}" onclick="toggleSight('${s.id}',${!s.visited})">
+          <span class="dot">${s.visited ? '✅' : '⚪'}</span>${s.visited ? 'Besucht' : 'Besucht?'}
+        </button>
+        <button type="button" class="sight-status-btn done-btn${s.is_done ? ' on' : ''}" onclick="toggleSightDone('${s.id}',${!s.is_done})">
+          <span class="dot">${s.is_done ? '☑️' : '⬜'}</span>${s.is_done ? 'Abgehakt' : 'Abhaken'}
+        </button>
+      </div>
       ${maps}
-      ${by ? `<div class="sight-by">Besucht von ${esc(by)}</div>` : ''}
+      ${attribution ? `<div class="sight-by">${attribution}</div>` : ''}
     </div>
     ${preview}
     <div class="sight-actions">
@@ -4287,7 +4294,29 @@ async function toggleSight(id, visited) {
     s.visited = visited;
     s.visited_by = visited ? S.user.id : null;
   }
-  await normalizeSightOrdersAfterToggle(id, visited);
+  renderSights();
+}
+
+async function toggleSightDone(id, done) {
+  suppressCollaborationToast(1600);
+  const { error } = await sb
+    .from('sights')
+    .update({ is_done: done, done_by: done ? S.user.id : null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) {
+    if (/is_done|done_by|schema cache|column/i.test(error.message || '')) {
+      toast('Abhaken: Bitte einmal im Supabase SQL Editor ausführen (siehe Kopf von index.html): ALTER TABLE sights ADD COLUMN IF NOT EXISTS is_done BOOLEAN DEFAULT FALSE;', 'error');
+    } else {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+  const s = S.sights.find((x) => x.id === id);
+  if (s) {
+    s.is_done = done;
+    s.done_by = done ? S.user.id : null;
+  }
+  renderSights();
 }
 
 async function editSight(id) {
@@ -5549,18 +5578,20 @@ function handleSightRT(p) {
   } else if (p.eventType === 'UPDATE') {
     const idx = S.sights.findIndex(s => s.id === p.new.id);
     const prev = idx >= 0 ? S.sights[idx] : null;
-    if (idx >= 0) { S.sights[idx] = p.new; if (p.new.visited_by !== S.user.id) flashEl(`si-${p.new.id}`); }
+    if (idx >= 0) { S.sights[idx] = p.new; if (p.new.visited_by !== S.user.id || p.new.done_by !== S.user.id) flashEl(`si-${p.new.id}`); }
     else S.sights.push(p.new);
     const otherVisit = p.new.visited_by && p.new.visited_by !== S.user.id;
+    const otherDone = p.new.done_by && p.new.done_by !== S.user.id;
     const textChange =
       prev &&
       (prev.name !== p.new.name ||
         prev.note !== p.new.note ||
         (prev.place_category || SIGHT_DEFAULT_CATEGORY) !== (p.new.place_category || SIGHT_DEFAULT_CATEGORY) ||
         !!prev.is_favorite !== !!p.new.is_favorite ||
+        !!prev.is_done !== !!p.new.is_done ||
         (prev.planned_day || null) !== (p.new.planned_day || null) ||
         Number(prev.sort_order ?? 0) !== Number(p.new.sort_order ?? 0));
-    if (otherVisit || textChange) shouldNotify = true;
+    if (otherVisit || otherDone || textChange) shouldNotify = true;
   } else if (p.eventType === 'DELETE') {
     S.sights = S.sights.filter(s => s.id !== p.old?.id);
     shouldNotify = true;
