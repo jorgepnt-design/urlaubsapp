@@ -2827,11 +2827,22 @@ function buildCountdownInnerHtml() {
       <div class="countdown-sub">Unten bei Reisedaten eintragen</div>
     </div>`;
   }
-  const dep = new Date(S.trip.departure_date);
+  // Datum als LOKALE Mitternacht parsen (sonst UTC-Versatz → Countdown um 1 Tag daneben)
+  const dep = new Date(`${S.trip.departure_date}T00:00:00`);
   const today = new Date(); today.setHours(0,0,0,0);
-  const diff = Math.ceil((dep - today) / 86400000);
+  const diff = Math.round((dep - today) / 86400000);
   const dest = destinationWithFlagHtml(S.trip.destination || '');
   if (diff < 0) {
+    // Abreise ist vorbei — läuft die Reise noch oder ist das Rückreisedatum erreicht?
+    let tripEnded = false;
+    if (S.trip.return_date) {
+      const ret = new Date(`${S.trip.return_date}T00:00:00`);
+      const retDiff = Math.round((ret - today) / 86400000);
+      tripEnded = retDiff < 0;
+    }
+    if (tripEnded) {
+      return `<div class="countdown-big"><div class="countdown-number">🏠</div><div class="countdown-label">Reise beendet!</div><div class="countdown-sub">${dest}</div></div>`;
+    }
     return `<div class="countdown-big"><div class="countdown-number">✈️</div><div class="countdown-label">Reise läuft!</div><div class="countdown-sub">${dest}</div></div>`;
   }
   if (diff === 0) {
